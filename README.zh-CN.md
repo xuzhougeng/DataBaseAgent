@@ -62,14 +62,22 @@ go run ./cmd/dba-server -port 3415 -workspace .tmp/dev-workspace
 
 服务仅监听 `127.0.0.1`。请勿让开发服务和桌面端同时使用同一工作空间。原始设计保存在 `design/DBA_design_package/`，包括未经修改的 HTML 和校验清单。
 
-## 使用路径
+## 使用路径：以 GPSAdb 为例
 
-1. 创建项目，填写主题、纳入标准及偏宽的检索表达式。
-2. 通过 Europe PMC、PubMed 或 GEO 检索，或导入候选 JSON。每次显示命中总数与实际获取数（上限 1000），保存检索历史并合并去重。GEO 结果可能包含 series、sample 或 platform，需要人工筛选。
-3. 在偏好设置中添加模型后让复核员给出复核建议，核对原文证据，再人工纳入或排除。也支持完全人工复核。复核必须填写理由；可补充来源编号、直接下载地址及分组。
-4. 添加 Linux SSH 服务器，先在终端验证免密登录与主机指纹，再在应用中检查连接。填写专用的远程绝对工作目录和 CPU/并发配额。
-5. 定义工具、shell 命令和预期输出文件，锁定流程版本，再把人工纳入的数据加入队列。默认下载步骤使用 `curl` 断点续传，后续处理步骤需由用户定义。
-6. Agent 定期检查进程和退出码，按配额调度任务，识别少量网络类错误并有限重试；其他命令错误、状态不明或连续失败转为求助。结果按清单增量同步，逐文件 SHA-256 校验后归档。
+GPSAdb（基因扰动单细胞图谱，Genetic Perturbation Single-cell Atlas）收集拟南芥与水稻在基因扰动（突变体、过表达、CRISPR）后的单细胞转录组数据，用于构建扰动响应图谱数据库。用 DBA 构建它的过程如下：
+
+1. **定义主题。** 新建项目 `GPSAdb`，填写：
+   - 研究对象：`Arabidopsis thaliana; Oryza sativa`；数据类型：`scRNA-seq`
+   - 纳入标准：① 含基因扰动处理组与对照组；② 公开原始数据（GEO/SRA/ENA）；③ 单细胞或单核转录组。
+   - 偏宽的检索表达式：
+     ```
+     (Arabidopsis OR rice) AND (single-cell RNA-seq OR scRNA-seq) AND (mutant OR overexpression OR CRISPR)
+     ```
+2. **检索。** 先查 Europe PMC，再查 GEO，也可导入候选 JSON。每次记录命中总数与实际获取数（上限 1000），结果合并去重。GEO 结果可能包含 series、sample 或 platform，需要人工筛选。
+3. **复核。** 在偏好设置中添加模型后，让复核员给出建议并附原文证据，再逐条人工确认并填写理由。例如：生长素相关突变体背景下的拟南芥根单细胞图谱，纳入；干旱处理的叶片 bulk RNA-seq，排除（不是单细胞）；玉米 snRNA-seq，排除（物种不符）。纳入的数据补充来源编号、直接下载地址和样本分组（每行 `样本编号, 分组`，如 `GSM0001, 野生型`、`GSM0002, 突变体`）。
+4. **添加服务器。** 添加 Linux SSH 服务器，先在终端验证免密登录与主机指纹，再在应用中检查连接。填写专用的远程绝对工作目录和 CPU/并发配额。
+5. **锁定流程。** 保留默认的 `curl` 断点续传下载步骤，加入自定义处理步骤（如比对与计数），声明产物 `expression_matrix.tsv`、`qc_report.html`，锁定 v1 后把纳入的数据加入队列。
+6. **巡检与归档。** Agent 定期检查进程和退出码，按配额调度，网络类错误有限重试；其他命令错误、状态不明或连续失败转为求助，在 Agent 中心处理。结果按清单增量同步到 `projects/<id>/results/`，逐文件 SHA-256 校验后归档，「导出产物清单」即得到 GPSAdb 的溯源记录。
 
 流程命令可以使用 `DBA_ACCESSION`、`DBA_SOURCE_URL`、`DBA_INPUT`、`DBA_OUTPUT`、`DBA_SAMPLE_GROUPS` 和 `DBA_CPUS`。步骤在 `$DBA_OUTPUT` 内顺序运行，错误即停止。输出路径为相对路径，例如 `expression_matrix.tsv`、`qc/report.html`。应用另生成 `run_manifest.json`。
 

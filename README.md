@@ -132,13 +132,22 @@ Windows:
 
 Installers, cross-compilation and workspace locations are covered in [docs/build.md](docs/build.md).
 
-**First project in five minutes**
+**Example: building GPSAdb**
 
-1. Create a project; write the research goal, inclusion criteria and a deliberately broad query.
-2. Run a search against Europe PMC, PubMed or GEO (or import JSON). Hits are merged and de-duplicated.
-3. Add a model in Preferences, let the Reviewer propose decisions, verify the quoted evidence, then include or exclude with a written reason.
-4. Register a Linux server (key-based SSH, strict host checking) and run the connection check.
-5. Define pipeline steps and outputs, lock the version, queue jobs. The scheduler dispatches within quotas, supervises, retries transient failures, escalates the rest, and archives verified outputs.
+GPSAdb (Genetic Perturbation Single-cell Atlas) collects single-cell transcriptomes of *Arabidopsis* and rice after gene perturbation (mutants, overexpression, CRISPR) into one perturbation-response atlas. Here is how it goes through DBA:
+
+1. **Define the topic.** Create a project named `GPSAdb`, with:
+   - Organism: `Arabidopsis thaliana; Oryza sativa` · Assay: `scRNA-seq`
+   - Inclusion criteria: (1) a perturbed group and a control group; (2) public raw data on GEO/SRA/ENA; (3) single-cell or single-nucleus transcriptome.
+   - A deliberately broad query:
+     ```
+     (Arabidopsis OR rice) AND (single-cell RNA-seq OR scRNA-seq) AND (mutant OR overexpression OR CRISPR)
+     ```
+2. **Search.** Run it against Europe PMC, then GEO. Hits are merged and de-duplicated, and each run records total hits vs. fetched.
+3. **Review.** Let the Reviewer propose decisions, then confirm each one with a reason. A root atlas in auxin-related mutant backgrounds is included; bulk RNA-seq under drought is excluded (not single-cell); maize snRNA-seq is excluded (wrong organism). For included records, fill in the accession, a direct download URL and `sample, group` lines (e.g. `GSM0001, wild type`, `GSM0002, mutant`).
+4. **Register a server.** Add a Linux host with key-based SSH and run the connection check.
+5. **Lock the pipeline.** Keep the default `curl` download step, add your own processing step (e.g. alignment and counting), declare outputs such as `expression_matrix.tsv` and `qc_report.html`, lock v1 and queue jobs for the included datasets.
+6. **Supervise and archive.** The scheduler runs jobs within quota and retries transient network failures. Anything else becomes a help request that you resolve in the Agent center. Outputs land in `projects/<id>/results/` with SHA-256 checksums, and **Export manifest** gives the provenance record for GPSAdb.
 
 Full walkthrough: [docs/workflow.md](docs/workflow.md).
 
