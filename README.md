@@ -132,22 +132,22 @@ Windows:
 
 Installers, cross-compilation and workspace locations are covered in [docs/build.md](docs/build.md).
 
-**Example: building GPSAdb**
+**Example: updating GPSAdb**
 
-GPSAdb (Genetic Perturbation Single-cell Atlas) collects single-cell transcriptomes of *Arabidopsis* and rice after gene perturbation (mutants, overexpression, CRISPR) into one perturbation-response atlas. Here is how it goes through DBA:
+GPSAdb (https://www.gpsadb.com; Guo et al., *Nucleic Acids Res.* 2023, 51:D964) collects human cell-line RNA-seq datasets in which one gene was knocked out or down by siRNA, shRNA, CRISPR/Cas9 or CRISPRi: 3,048 datasets for 1,458 genes in its published version, found by searching GEO and ENCODE with knockdown and knockout terms, screened by hand, and reprocessed into differential-expression tables and up/down gene sets. Keeping it current means repeating that cycle for every new GEO release. Here is how one update cycle goes through DBA:
 
-1. **Define the topic.** Create a project named `GPSAdb`, with:
-   - Organism: `Arabidopsis thaliana; Oryza sativa` · Assay: `scRNA-seq`
-   - Inclusion criteria: (1) a perturbed group and a control group; (2) public raw data on GEO/SRA/ENA; (3) single-cell or single-nucleus transcriptome.
-   - A deliberately broad query:
+1. **Define the topic.** Create a project named `GPSAdb update`, with:
+   - Organism: `Homo sapiens` · Assay: `RNA-seq`
+   - Inclusion criteria: (1) a human cell line; (2) one gene knocked out or down by siRNA, shRNA, CRISPR/Cas9 or CRISPRi, with a matched control; (3) raw reads or counts public on GEO/SRA. Exclude overexpression-only, drug-treatment-only, primary-tissue and single-cell datasets.
+   - A deliberately broad query, restricted to series released after the last update:
      ```
-     (Arabidopsis OR rice) AND (single-cell RNA-seq OR scRNA-seq) AND (mutant OR overexpression OR CRISPR)
+     (knockdown OR knockout OR shRNA OR siRNA OR CRISPR) AND "Homo sapiens"[Organism] AND gse[Entry Type] AND 2022/08/26:2030/12/31[PDAT]
      ```
-2. **Search.** Run it against Europe PMC, then GEO. Hits are merged and de-duplicated, and each run records total hits vs. fetched.
-3. **Review.** Let the Reviewer propose decisions, then confirm each one with a reason. A root atlas in auxin-related mutant backgrounds is included; bulk RNA-seq under drought is excluded (not single-cell); maize snRNA-seq is excluded (wrong organism). For included records, fill in the accession, a direct download URL and `sample, group` lines (e.g. `GSM0001, wild type`, `GSM0002, mutant`).
+2. **Search.** Run it against GEO. A plain-language form of the same terms can be run against Europe PMC to catch papers whose GEO series lack them. Hits are merged and de-duplicated, and each run records total hits vs. fetched.
+3. **Review.** Let the Reviewer propose decisions, then confirm each one with a reason. A CRISPR knockout of a transcription factor in HepG2 with wild-type controls is included; an overexpression-only series is excluded; a knockdown in primary T cells is excluded (not a cell line). For included records, fill in the accession and `sample, group` lines (e.g. `GSM0000001, control`, `GSM0000002, perturbed`), and note the perturbed gene in the review note.
 4. **Register a server.** Add a Linux host with key-based SSH and run the connection check.
-5. **Lock the pipeline.** Keep the default `curl` download step, add your own processing step (e.g. alignment and counting), declare outputs such as `expression_matrix.tsv` and `qc_report.html`, lock v1 and queue jobs for the included datasets.
-6. **Supervise and archive.** The scheduler runs jobs within quota and retries transient network failures. Anything else becomes a help request that you resolve in the Agent center. Outputs land in `projects/<id>/results/` with SHA-256 checksums, and **Export manifest** gives the provenance record for GPSAdb.
+5. **Lock the pipeline.** Wrap GPSAdb's existing commands in three steps: fetch the runs (`pysradb` and `prefetch`), quantify, and run the differential-expression script over `$DBA_SAMPLE_GROUPS`. Declare `expression_matrix.tsv`, `differential_expression.tsv` and `qc_report.html` as outputs, lock v1 and queue jobs for the included datasets.
+6. **Supervise and archive.** The scheduler runs jobs within quota and retries transient network failures. Anything else becomes a help request that you resolve in the Agent center. Outputs land in `projects/<id>/results/` with SHA-256 checksums, and **Export manifest** gives the provenance record to load into GPSAdb.
 
 Full walkthrough: [docs/workflow.md](docs/workflow.md).
 
