@@ -45,13 +45,13 @@ function openConversation(cid){
   closeMentions();
   const c=(db.conversations||[]).find(c=>c.id===cid);if(!c)return;
   ui.projectId=c.projectId;ui.conversationSelections[scopeKey()]=c.id;ui.page='agent';
-  ui.chatReadCounts[c.id]=replyCount(c.id);if(window.innerWidth<1100)ui.historyOpen=false;
+  ui.chatReadCounts[c.id]=replyCount(c.id);closeModal();
   saveChatUI();render();
 }
-function toggleChatHistory(){ui.historyOpen=!ui.historyOpen;render();if(ui.historyOpen)document.getElementById('chat-history-search')?.focus();}
-function searchChatHistory(value){ui.historyQuery=value;render();}
-function toggleChatArchive(){ui.historyArchived=!ui.historyArchived;render();}
-function chatHistoryPanel(){
+function openChatHistory(){ui.historyQuery='';modal(t('对话历史'),chatHistoryBody(),btn(t('新建对话'),'closeModal();newConversation()','primary','plus'),'history-modal');document.getElementById('chat-history-search')?.focus();}
+function searchChatHistory(value){ui.historyQuery=value;const list=document.querySelector('.history-modal .history-list');if(list)list.innerHTML=chatHistoryList();}
+function toggleChatArchive(){ui.historyArchived=!ui.historyArchived;const body=document.querySelector('.history-modal .modal-body');if(body){body.innerHTML=chatHistoryBody();body.querySelector('.history-tabs button.active')?.focus();}}
+function chatHistoryList(){
   const query=(ui.historyQuery||'').trim().toLocaleLowerCase();
   const all=scopeConversations(),messages=scopeHistory(),pending=new Set(messages.filter(isPendingMessage).map(m=>m.conversationId));
   const list=all.filter(c=>!!c.archived===!!ui.historyArchived&&(!query||c.title.toLocaleLowerCase().includes(query)||messages.some(m=>m.conversationId===c.id&&m.content.toLocaleLowerCase().includes(query)))).sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.updatedAt.localeCompare(a.updatedAt)||all.indexOf(b)-all.indexOf(a));
@@ -63,7 +63,11 @@ function chatHistoryPanel(){
     const a=agents().find(a=>a.id===c.agentId),unread=Math.max(0,replyCount(c.id)-(Number(ui.chatReadCounts[c.id])||0));
     return divider+`<button class="history-item ${currentConversation()?.id===c.id?'active':''}" onclick="openConversation('${c.id}')" aria-current="${currentConversation()?.id===c.id?'true':'false'}" title="${esc(c.title)}"><span class="history-item-title">${pending.has(c.id)?'<i class="status-dot"></i>':I(c.pinned?'pin':'chat')}<strong>${esc(c.title)}</strong>${unread&&currentConversation()?.id!==c.id?`<span class="count">${unread}</span>`:''}</span><span class="history-item-meta">${esc(t(a?.name||'Agent'))}<time>${date(c.updatedAt)}</time></span></button>`;
   }).join('');
-  return `<aside class="conversation-history ${ui.historyOpen?'open':''}" aria-label="${t('对话历史')}"><div class="history-head"><strong>${t('对话历史')}</strong><span>${all.filter(c=>!!c.archived===!!ui.historyArchived).length}</span><button class="icon-button" onclick="toggleChatHistory()" aria-label="${t('收起对话历史')}">${I('close')}</button></div><div class="history-search">${I('search')}<input id="chat-history-search" aria-label="${t('搜索对话')}" placeholder="${t('搜索标题或消息…')}" value="${esc(ui.historyQuery||'')}" oninput="searchChatHistory(this.value)"></div><div class="history-tabs"><button class="${!ui.historyArchived?'active':''}" onclick="if(ui.historyArchived)toggleChatArchive()">${t('最近对话')}</button><button class="${ui.historyArchived?'active':''}" onclick="if(!ui.historyArchived)toggleChatArchive()">${t('已归档')}</button></div><div class="history-list">${rows||`<div class="history-empty">${I('chat')}<p>${t(query?'没有匹配的对话':ui.historyArchived?'还没有归档对话':'发送第一条消息后，对话会自动保存在这里。')}</p></div>`}</div><p class="history-note">${I('folder')}${esc(current()?.name||t('工作空间对话'))}</p></aside>`;
+  return rows||`<div class="history-empty">${I('chat')}<p>${t(query?'没有匹配的对话':ui.historyArchived?'还没有归档对话':'发送第一条消息后，对话会自动保存在这里。')}</p></div>`;
+}
+function chatHistoryBody(){
+  const all=scopeConversations(),n=all.filter(c=>!c.archived).length,archived=all.length-n;
+  return `<div class="history-search">${I('search')}<input id="chat-history-search" aria-label="${t('搜索对话')}" placeholder="${t('搜索标题或消息…')}" value="${esc(ui.historyQuery||'')}" oninput="searchChatHistory(this.value)"></div><div class="history-tabs"><button class="${!ui.historyArchived?'active':''}" onclick="if(ui.historyArchived)toggleChatArchive()">${t('最近对话')}${n?` <span>${n}</span>`:''}</button><button class="${ui.historyArchived?'active':''}" onclick="if(!ui.historyArchived)toggleChatArchive()">${t('已归档')}${archived?` <span>${archived}</span>`:''}</button></div><div class="history-list">${chatHistoryList()}</div><p class="history-note">${I('folder')}${esc(current()?.name||t('工作空间对话'))}</p>`;
 }
 
 const chatIconButton=(label,action,icon,disabled=false)=>`<button class="icon-button" title="${esc(t(label))}" aria-label="${esc(t(label))}" onclick="${action}" ${disabled?'disabled':''}>${I(icon)}</button>`;
@@ -114,8 +118,8 @@ function messageQueue(){
 function agentPage(){
   const p=current(),a=currentAgent(),m=a&&agentModel(a),c=currentConversation(),ready=!!meta.ready?.[a?.id],messages=selectedMessages(),draft=chatDraft(),key=conversationKey(),sending=ui.chatSending.has(key),outbox=ui.chatOutbox[key];
   const queue=chatQueue(),paused=!!db.chatQueuePaused?.[ui.projectId||''],blocked=!ready||!!c?.archived||sending,tooLong=messageSize(draft)>8000;
-  return head(t('AI 助手'),t('围绕目标展开对话，随时查看执行过程。'),btn(t('对话历史'),'toggleChatHistory()',ui.historyOpen?'small selected':'small','chat')+btn(t('新建对话'),'newConversation()','small primary','plus'))+`
-    <div class="assistant-layout">${chatHistoryPanel()}<section class="assistant-workspace" aria-label="${t('AI 对话')}">
+  return head(t('AI 助手'),t('围绕目标展开对话，随时查看执行过程。'),btn(t('对话历史'),'openChatHistory()','small','chat')+btn(t('新建对话'),'newConversation()','small primary','plus'))+`
+    <div class="assistant-layout"><section class="assistant-workspace" aria-label="${t('AI 对话')}">
       <div class="assistant-toolbar"><div class="conversation-heading"><div><h2>${esc(c?.title||t('新对话'))}</h2><span>${I('folder')}${esc(p?.name||t('工作空间对话'))}</span></div><div class="conversation-actions">${conversationActions(c)}</div></div><div class="assistant-context"><span>${I('agent')}${t('主 Agent 统筹 · 子 Agent 按需协作')}</span>${badge(t(ready?'可用':'待配置模型'),ready?'':'orange')}</div></div>
       ${ui.connectionError?`<div class="chat-connection" role="status">${I('alert')}${t('连接中断，草稿已保留。恢复连接后会自动同步。')}</div>`:''}${meta.chatErrors?.[ui.projectId||'']?`<div class="chat-connection" role="alert">${esc(meta.chatErrors[ui.projectId||''])}</div>`:''}
       <div class="chat-log" role="log" aria-label="${t('对话记录')}" aria-live="off" onscroll="onChatScroll()">${messages.length?chatLog(messages):`<div class="assistant-welcome"><span class="welcome-icon">${I(a?.icon||'agent')}</span><h2>${t('从一个目标开始')}</h2><p>${t('主 Agent 持续跟进项目，协调检索、复核、流程和运维。')}</p><p class="muted">${t('直接描述目标，或输入 @ 选择一位子 Agent 参与。')}</p><div class="prompt-list">${agentPrompts.map((prompt,index)=>`<button onclick="usePrompt(${index})">${I(index===0?'flow':index===1?'activity':'folder')}<span>${t(prompt)}</span>${I('arrow')}</button>`).join('')}</div></div>`}</div>

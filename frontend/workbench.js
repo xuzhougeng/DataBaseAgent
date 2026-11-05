@@ -7,7 +7,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 
 let db={projects:[],servers:[],jobs:[],artifacts:[],events:[],settings:{}};
 let meta={},lastState='',loading=false;
-const ui={page:'projects',projectId:null,filter:'pending',candidateId:'',jobFilter:'all',jobQuery:'',modelId:'',busy:new Set(),dirty:{},chatDrafts:{},conversationSelections:{},chatReadCounts:{},chatOutbox:{},chatSending:new Set(),chatScrolls:{},chatDetails:{},historyOpen:window.innerWidth>=1200,historyQuery:'',historyArchived:false,asideHidden:(()=>{try{return localStorage.getItem('dba-aside')==='hidden'}catch{}})()};
+const ui={page:'projects',projectId:null,filter:'pending',candidateId:'',jobFilter:'all',jobQuery:'',modelId:'',busy:new Set(),dirty:{},chatDrafts:{},conversationSelections:{},chatReadCounts:{},chatOutbox:{},chatSending:new Set(),chatScrolls:{},chatDetails:{},historyQuery:'',historyArchived:false,asideHidden:(()=>{try{return localStorage.getItem('dba-aside')==='hidden'}catch{}})()};
 const protocolNames={openai:'OpenAI Chat Completions 兼容',anthropic:'Anthropic Messages',gemini:'Google Gemini'};
 const protocolHints={openai:'例如 https://api.openai.com/v1；DeepSeek、Qwen、Ollama、vLLM、OpenRouter 等兼容服务同理，应用追加 /chat/completions',anthropic:'例如 https://api.anthropic.com/v1，应用追加 /messages；模型 ID 如 claude-opus-5-5',gemini:'例如 https://generativelanguage.googleapis.com/v1beta，应用追加 /models/{模型}:generateContent'};
 const labels={queued:'排队中',starting:'提交中',running:'运行中',retry_wait:'等待重试',syncing:'结果同步',succeeded:'已完成',needs_help:'需要协助',pending:'待确认',accepted:'已纳入',excluded:'已排除',include:'建议纳入',exclude:'建议排除',uncertain:'需要确认',online:'连接正常',unchecked:'待检查',error:'连接异常'};
@@ -52,7 +52,7 @@ async function refresh(force=false){
     if(ui.projectId===null)ui.projectId=db.projects[0]?.id||'';
     if(ui.projectId&&!current())ui.projectId='';
     syncChatState();
-    const focused=document.activeElement,chatEditing=focused?.matches('#agent-message,#chat-history-search');
+    const focused=document.activeElement,chatEditing=focused?.matches('#agent-message');
     const editing=document.querySelector('#modal-root .modal')||focused?.matches('input,textarea,select')&&!chatEditing||ui.chatComposing;
     if(force||wasDisconnected||signature!==lastState&&!editing){lastState=signature;render();}
   }catch(error){if(!ui.connectionError){ui.connectionError=true;if(ui.page==='agent'&&!ui.chatComposing)render();}throw error;}
@@ -115,12 +115,12 @@ function render(){
   const scrolls=view===ui.view?['.sidebar','.candidate-list','.aside-feed','.history-list',...(form===ui.form?['main']:[])].map(s=>[s,document.querySelector(s)?.scrollTop]):[];
   if(form!==ui.form)ui.dirty={};
   Object.assign(ui,{view,form,chatKey});
-  document.getElementById('app').innerHTML=`<div class="app ${ui.asideHidden?'aside-hidden':''}">${sidebar(p)}<main class="${ui.page==='agent'?'assistant-main':''}">${body}</main>${aside(p)}</div>`;
+  document.getElementById('app').innerHTML=`<div class="app ${ui.asideHidden?'aside-hidden':''}">${sidebar(p)}<main class="${ui.page==='agent'?'assistant-main':''}">${body}</main>${aside(p)}${ui.page==='agent'?'':`<button class="assistant-fab" onclick="go('agent')" aria-label="${t('打开 AI 助手')}" title="${t('打开 AI 助手')}">${I('agent')}<span>${t('AI 助手')}</span>${helpJobs().length?`<span class="count warn">${helpJobs().length}</span>`:''}</button>`}</div>`;
   for(const [id,v] of Object.entries(ui.dirty)){const el=document.getElementById(id);if(el)el.value=v;}
   document.querySelectorAll('[data-detail-id]').forEach(el=>{if(el.dataset.detailId in ui.chatDetails)el.open=ui.chatDetails[el.dataset.detailId];});
   for(const [s,top] of scrolls){const el=document.querySelector(s);if(el&&top)el.scrollTop=top;}
   const chat=document.querySelector('.chat-log'),position=ui.chatScrolls[chatKey];if(chat)chat.scrollTop=!position||position.bottom?chat.scrollHeight:position.top;
-  if(['agent-message','chat-history-search'].includes(focusedId)){const el=document.getElementById(focusedId);if(el&&!el.disabled){el.focus({preventScroll:true});if(selection)el.setSelectionRange(...selection);}}
+  if(focusedId==='agent-message'){const el=document.getElementById(focusedId);if(el&&!el.disabled){el.focus({preventScroll:true});if(selection)el.setSelectionRange(...selection);}}
   resizeComposer();onChatScroll();if(focusedId==='agent-message')updateMentions(document.getElementById('agent-message'),true);
 }
 
@@ -146,9 +146,8 @@ function sidebar(p){
 function toggleAside(){ui.asideHidden=!ui.asideHidden;try{localStorage.setItem('dba-aside',ui.asideHidden?'hidden':'')}catch{}render();}
 function aside(p){
   const events=db.events.filter(e=>!p||!e.projectId||e.projectId===p.id).slice(-20).reverse(),helps=helpJobs().filter(j=>!p||j.projectId===p.id),paused=db.settings.paused,runs=(meta.agentRuns||[]).filter(r=>!p||r.projectId===p.id);
-  const assistantEntry=`<button class="assistant-entry ${ui.page==='agent'?'active':''}" onclick="go('agent')" aria-label="${t('打开 AI 助手')}" ${ui.page==='agent'?'aria-current="page"':''}>${I('agent')}<span>${t('AI 助手')}</span>${helps.length?`<span class="count warn">${helps.length}</span>`:''}${I('chevron')}</button>`;
-  if(ui.asideHidden)return `<aside class="aside rail"><button class="icon-button ${ui.page==='agent'?'active':''}" onclick="go('agent')" aria-label="${t('打开 AI 助手')}" title="${t('打开 AI 助手')}" ${ui.page==='agent'?'aria-current="page"':''}>${I('agent')}</button><button class="icon-button" onclick="toggleAside()" aria-label="${t('展开工作进展')}" title="${t('展开工作进展')}">${I('activity')}</button>${helps.length?`<span class="count warn">${helps.length}</span>`:''}</aside>`;
-  return `<aside class="aside" aria-label="${t('AI 工作进展')}">${assistantEntry}<div class="aside-head">${I('activity')}<div><strong>${t('工作进展')}</strong><small>${paused?t('巡检已暂停，远端进程继续运行'):t('每 {n} 秒巡检 · {m} 个活跃任务',{n:db.settings.intervalSeconds,m:db.jobs.filter(active).length})}</small></div><button class="icon-button" onclick="toggleAside()" aria-label="${t('收起工作进展')}" title="${t('收起工作进展')}">${I('chevron')}</button></div>
+  if(ui.asideHidden)return `<aside class="aside rail"><button class="icon-button" onclick="toggleAside()" aria-label="${t('展开工作进展')}" title="${t('展开工作进展')}">${I('activity')}</button>${helps.length?`<span class="count warn">${helps.length}</span>`:''}</aside>`;
+  return `<aside class="aside" aria-label="${t('AI 工作进展')}"><div class="aside-head">${I('activity')}<div><strong>${t('工作进展')}</strong><small>${paused?t('巡检已暂停，远端进程继续运行'):t('每 {n} 秒巡检 · {m} 个活跃任务',{n:db.settings.intervalSeconds,m:db.jobs.filter(active).length})}</small></div><button class="icon-button" onclick="toggleAside()" aria-label="${t('收起工作进展')}" title="${t('收起工作进展')}">${I('chevron')}</button></div>
     <div class="progress-controls">${btn(t('立即巡检'),'tick()','small','sync')}${btn(t(paused?'恢复巡检':'暂停巡检'),'toggleAgent()','small',paused?'play':'pause')}</div>
     <div class="aside-feed">${runs.map(r=>`<div class="run-progress" role="status"><strong>${I('agent')}${esc(agents().find(a=>a.id===(r.subagentId||r.agentId))?.name||'Agent')}</strong><p>${r.tool?t('正在执行 {tool}',{tool:esc(r.tool)}):t('正在规划下一步…')}</p><small>${t('第 {n} 步',{n:r.step||1})} · ${date(r.startedAt)}</small></div>`).join('')}
     ${helps.map(j=>`<div class="help-card"><strong>${I('alert')}${t('{a} 需要你的判断',{a:esc(j.accession)})}</strong><p>${esc(j.help||j.error)}</p><div class="decision">${btn(t('查看并处理'),`jobDetail('${j.id}')`,'small')}${btn(t('交给 AI 排查'),`askAgent('operator','${j.id}')`,'small','agent',!meta.ready?.operator)}</div></div>`).join('')}
@@ -251,7 +250,7 @@ document.addEventListener('keydown',e=>{
   if(e.shiftKey&&(document.activeElement===first||!dialog.contains(document.activeElement))){e.preventDefault();last?.focus();}
   else if(!e.shiftKey&&(document.activeElement===last||!dialog.contains(document.activeElement))){e.preventDefault();first?.focus();}
 });
-document.addEventListener('input',e=>{const el=e.target;if(el.id&&!['agent-message','chat-history-search'].includes(el.id)&&el.closest('main'))ui.dirty[el.id]=el.value;});
+document.addEventListener('input',e=>{const el=e.target;if(el.id&&el.id!=='agent-message'&&el.closest('main'))ui.dirty[el.id]=el.value;});
 document.addEventListener('click',e=>{const a=e.target.closest('a[href^="http"]');if(!a)return;e.preventDefault();run(()=>request('openURL',{url:a.href}));});
 
 function newProject(){modal(t('新建数据库项目'),field(t('项目名称'),'new-name')+field(t('研究目标'),'new-desc','','textarea'),btn(t('创建项目'),'createProject()','primary','plus'));}
