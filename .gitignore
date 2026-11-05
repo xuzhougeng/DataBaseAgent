@@ -5,3 +5,5 @@
 *.syso
 *.log
 node_modules/
+.tmp/
+.DS_Store

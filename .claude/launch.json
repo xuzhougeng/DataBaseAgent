@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dba-dev",
+      "runtimeExecutable": "go",
+      "runtimeArgs": ["run", "./cmd/dba-server", "-port", "3415", "-workspace", ".tmp/dev-workspace"],
+      "port": 3415
+    }
+  ]
+}
