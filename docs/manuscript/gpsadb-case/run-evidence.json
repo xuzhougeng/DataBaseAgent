@@ -1,0 +1,89 @@
+{
+  "dba_commit": "95af08c",
+  "client": "local API exposed by the browser preview service",
+  "executor": "OpenSSH to a loopback macOS host (Darwin 27.0.0)",
+  "searches": [
+    {
+      "query": "gse[Entry Type] AND (GSE299540[ACCN] OR GSE139235[ACCN])",
+      "source": "GEO",
+      "total": 2,
+      "fetched": 2,
+      "added": 2,
+      "at": "2026-11-05T12:27:53Z"
+    }
+  ],
+  "search_errors": [
+    {
+      "at": "2026-11-05T12:27:53Z",
+      "detail": "GEO · 检索服务返回 HTTP 500"
+    },
+    {
+      "at": "2026-11-05T12:28:50Z",
+      "detail": "GEO · 检索服务返回 HTTP 500"
+    },
+    {
+      "at": "2026-11-05T12:28:53Z",
+      "detail": "GEO · 检索服务返回 HTTP 500"
+    },
+    {
+      "at": "2026-11-05T12:28:56Z",
+      "detail": "GEO · 检索服务返回 HTTP 500"
+    }
+  ],
+  "review": [
+    {
+      "accession": "GSE299540",
+      "decision": "accepted",
+      "reviewNote": "GEO describes FAM167A knockdown in human neuroblastoma cell lines. This run uses only the SK-N-SH pooled siRNA comparison: five targeting and five non-targeting samples with a submitted raw count matrix."
+    },
+    {
+      "accession": "GSE139235",
+      "decision": "excluded",
+      "reviewNote": "GEO describes RNA-seq of NC3 and S3, two sublines isolated from SK-N-SH. The comparison has no single-gene loss-of-function intervention."
+    }
+  ],
+  "job": {
+    "id": "job_90ea4dcb3a58c3d29bc0",
+    "source_accession": "GSE299540",
+    "pipeline_id": "pipeline_8634991b6b694c5fb497",
+    "pipeline_version": 1,
+    "input_sha256": "7dd92c7adc6111d132638660595fcff2c65205ec83a587d276f43b24c71c1855",
+    "input_bytes": 2666717,
+    "attempt_1": {
+      "status": "needs_help",
+      "resumeStatus": "queued",
+      "error": "远端命令退出码 1",
+      "log_excerpt": "Expected five confirmed controls and five confirmed knockdowns for GSE299540 SK-N-SH siRNA."
+    },
+    "resume_event": {
+      "at": "2026-11-05T12:27:59Z",
+      "detail": "Confirmed the ten GSM assignments against the GEO series and matched the sample names to the count table."
+    },
+    "attempt_2": {
+      "status": "succeeded",
+      "log_excerpt": "Validated 58735 genes and 10 samples.",
+      "completed_at": "2026-11-05T12:28:02Z"
+    },
+    "samples": {
+      "control": 5,
+      "knockdown": 5
+    },
+    "archived_files": [
+      {
+        "name": "counts.tsv",
+        "size": 2586831,
+        "sha256": "699945177f4df12542a63df4e8fb9e3c1246b46c3de0743bd03c5c64b8888a26"
+      },
+      {
+        "name": "samples.tsv",
+        "size": 375,
+        "sha256": "4aa95e51344349e290a91cb96ad8e7244af7c1d90c1fc2a4239259ba85ce4d68"
+      },
+      {
+        "name": "sample_qc.tsv",
+        "size": 298,
+        "sha256": "ededc1f64a7f882e0e1871c056f43f92b1107964cd619d7bc5a34928dbbc8cbc"
+      }
+    ]
+  }
+}

@@ -22,9 +22,12 @@ try {
     }
     function MacApp {
         $app = 'bin/DBA.app/Contents'
+        $goVersion = go env GOVERSION
+        if ($LASTEXITCODE -ne 0) { throw 'Could not determine Go version' }
+        $macosTarget = if ($goVersion -match '^go1\.26(\.|$)') { '12.0' } else { '13.0' }
         New-Item -ItemType Directory -Path "$app/MacOS" -Force | Out-Null
         Build 'darwin' 'arm64' "$app/MacOS/DBA"
-        Set-Content -NoNewline -Encoding utf8 -Path "$app/Info.plist" -Value @'
+        Set-Content -NoNewline -Encoding utf8 -Path "$app/Info.plist" -Value @"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -35,10 +38,10 @@ try {
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>0.1.0</string>
-  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>LSMinimumSystemVersion</key><string>$macosTarget</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
-'@
+"@
     }
     switch ($Target) {
         'windows' { Build 'windows' 'amd64' 'bin/DBA.exe' }
