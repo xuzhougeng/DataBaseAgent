@@ -16,53 +16,75 @@ import (
 )
 
 type Service struct {
-	Store     *Store
-	Runner    Executor
-	tickMu    sync.Mutex
-	searchMu  sync.Mutex
-	opMu      sync.Mutex
-	agentMu   sync.Mutex
-	agentRuns map[string]AgentRun
-	inFlight  map[string]bool
-	ctx       context.Context
-	cancel    context.CancelFunc
+	Store        *Store
+	Runner       Executor
+	tickMu       sync.Mutex
+	searchMu     sync.Mutex
+	opMu         sync.Mutex
+	agentMu      sync.Mutex
+	agentRuns    map[string]AgentRun
+	agentCancels map[string]context.CancelFunc
+	chatWorkers  map[string]bool
+	chatWaiters  map[string]chan error
+	chatErrors   map[string]string
+	chatWG       sync.WaitGroup
+	inFlight     map[string]bool
+	ctx          context.Context
+	cancel       context.CancelFunc
 }
 
 func NewService(store *Store) *Service {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Service{Store: store, Runner: &SSHExecutor{}, ctx: ctx, cancel: cancel, inFlight: map[string]bool{}, agentRuns: map[string]AgentRun{}}
+	return &Service{Store: store, Runner: &SSHExecutor{}, ctx: ctx, cancel: cancel, inFlight: map[string]bool{}, agentRuns: map[string]AgentRun{}, agentCancels: map[string]context.CancelFunc{}, chatWorkers: map[string]bool{}, chatWaiters: map[string]chan error{}, chatErrors: map[string]string{}}
 }
-func (s *Service) Stop() { s.cancel() }
+func (s *Service) Stop() {
+	s.cancel()
+	s.agentMu.Lock() // synchronize with the last possible worker registration
+	s.agentMu.Unlock()
+	s.chatWG.Wait()
+	s.agentMu.Lock()
+	for mid := range s.chatWaiters {
+		s.finishChatWaiterLocked(mid, context.Canceled)
+	}
+	s.agentMu.Unlock()
+}
 
 type Request struct {
-	ProjectID   string       `json:"projectId"`
-	CandidateID string       `json:"candidateId"`
-	JobID       string       `json:"jobId"`
-	ServerID    string       `json:"serverId"`
-	Name        string       `json:"name"`
-	Description string       `json:"description"`
-	Organism    string       `json:"organism"`
-	Assay       string       `json:"assay"`
-	Criteria    string       `json:"criteria"`
-	Query       string       `json:"query"`
-	Source      string       `json:"source"`
-	Limit       int          `json:"limit"`
-	Decision    string       `json:"decision"`
-	Note        string       `json:"note"`
-	Groups      string       `json:"groups"`
-	DownloadURL string       `json:"downloadUrl"`
-	URL         string       `json:"url"`
-	Accession   string       `json:"accession"`
-	Message     string       `json:"message"`
-	Pipeline    Pipeline     `json:"pipeline"`
-	Server      Server       `json:"server"`
-	Candidates  []Candidate  `json:"candidates"`
-	Settings    Settings     `json:"settings"`
-	AgentID     string       `json:"agentId"`
-	ModelID     string       `json:"modelId"`
-	Agent       Agent        `json:"agent"`
-	Model       ModelProfile `json:"model"`
-	APIKey      *string      `json:"apiKey,omitempty"` // omitted keeps the stored key; empty removes it
+	ConversationID string       `json:"conversationId"`
+	MessageID      string       `json:"messageId"`
+	ClientID       string       `json:"clientId"`
+	RetryOf        string       `json:"retryOf"`
+	Title          *string      `json:"title,omitempty"`
+	Pinned         *bool        `json:"pinned,omitempty"`
+	Archived       *bool        `json:"archived,omitempty"`
+	ProjectID      string       `json:"projectId"`
+	CandidateID    string       `json:"candidateId"`
+	JobID          string       `json:"jobId"`
+	ServerID       string       `json:"serverId"`
+	Name           string       `json:"name"`
+	Description    string       `json:"description"`
+	Organism       string       `json:"organism"`
+	Assay          string       `json:"assay"`
+	Criteria       string       `json:"criteria"`
+	Query          string       `json:"query"`
+	Source         string       `json:"source"`
+	Limit          int          `json:"limit"`
+	Decision       string       `json:"decision"`
+	Note           string       `json:"note"`
+	Groups         string       `json:"groups"`
+	DownloadURL    string       `json:"downloadUrl"`
+	URL            string       `json:"url"`
+	Accession      string       `json:"accession"`
+	Message        string       `json:"message"`
+	Pipeline       Pipeline     `json:"pipeline"`
+	Server         Server       `json:"server"`
+	Candidates     []Candidate  `json:"candidates"`
+	Settings       Settings     `json:"settings"`
+	AgentID        string       `json:"agentId"`
+	ModelID        string       `json:"modelId"`
+	Agent          Agent        `json:"agent"`
+	Model          ModelProfile `json:"model"`
+	APIKey         *string      `json:"apiKey,omitempty"` // omitted keeps the stored key; empty removes it
 }
 
 func decode(raw json.RawMessage) (Request, error) {
@@ -84,6 +106,10 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 		return nil, s.AgentReview(ctx, r.ProjectID, r.CandidateID)
 	case "message":
 		return nil, s.Chat(ctx, r.ProjectID, r.AgentID, r.Message)
+	case "enqueueMessage":
+		return s.enqueueMessage(r, nil, false)
+	case "editQueuedMessage", "cancelMessage", "resumeChatQueue", "pauseChatQueue", "updateConversation":
+		return nil, s.manageConversation(action, r)
 	case "tick":
 		return nil, s.Tick(ctx)
 	case "exportManifest":

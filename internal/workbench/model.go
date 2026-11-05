@@ -2,18 +2,20 @@ package workbench
 
 import "time"
 
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 type State struct {
-	Schema    int        `json:"schema"`
-	Projects  []Project  `json:"projects"`
-	Servers   []Server   `json:"servers"`
-	Jobs      []Job      `json:"jobs"`
-	Artifacts []Artifact `json:"artifacts"`
-	Events    []Event    `json:"events"`
-	Messages  []Message  `json:"messages,omitempty"` // workspace conversation, before a project is selected
-	Settings  Settings   `json:"settings"`
-	LastTick  string     `json:"lastTick"`
+	Schema          int             `json:"schema"`
+	Projects        []Project       `json:"projects"`
+	Servers         []Server        `json:"servers"`
+	Jobs            []Job           `json:"jobs"`
+	Artifacts       []Artifact      `json:"artifacts"`
+	Events          []Event         `json:"events"`
+	Messages        []Message       `json:"messages,omitempty"` // workspace conversation, before a project is selected
+	Conversations   []Conversation  `json:"conversations"`
+	ChatQueuePaused map[string]bool `json:"chatQueuePaused"`
+	Settings        Settings        `json:"settings"`
+	LastTick        string          `json:"lastTick"`
 }
 
 type Project struct {
@@ -144,34 +146,62 @@ type Event struct {
 }
 
 type Message struct {
-	Role    string  `json:"role"`
-	Agent   string  `json:"agent"`
-	Kind    string  `json:"kind,omitempty"` // delegation: a child task in the shared conversation
-	Task    string  `json:"task,omitempty"`
-	Error   bool    `json:"error,omitempty"`
-	Content string  `json:"content"`
-	Trace   []Trace `json:"trace,omitempty"`
-	At      string  `json:"at"`
+	Kind           string  `json:"kind,omitempty"`
+	Task           string  `json:"task,omitempty"`
+	Error          bool    `json:"error,omitempty"`
+	RequestedAgent string  `json:"requestedAgent,omitempty"`
+	ID             string  `json:"id"`
+	ConversationID string  `json:"conversationId"`
+	ClientID       string  `json:"clientId,omitempty"`
+	ReplyTo        string  `json:"replyTo,omitempty"`
+	RetryOf        string  `json:"retryOf,omitempty"`
+	Status         string  `json:"status"`
+	StartedAt      string  `json:"startedAt,omitempty"`
+	FinishedAt     string  `json:"finishedAt,omitempty"`
+	Role           string  `json:"role"`
+	Agent          string  `json:"agent"`
+	Content        string  `json:"content"`
+	Trace          []Trace `json:"trace,omitempty"`
+	At             string  `json:"at"`
+}
+
+type Conversation struct {
+	ID        string `json:"id"`
+	ProjectID string `json:"projectId"`
+	AgentID   string `json:"agentId"`
+	Title     string `json:"title"`
+	Pinned    bool   `json:"pinned"`
+	Archived  bool   `json:"archived"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
 // AgentRun is transient progress; persisted messages and events survive a restart.
 type AgentRun struct {
-	ProjectID  string `json:"projectId"`
-	AgentID    string `json:"agentId"`
-	StartedAt  string `json:"startedAt"`
-	Step       int    `json:"step"`
-	Tool       string `json:"tool"`
-	SubagentID string `json:"subagentId,omitempty"`
-	Task       string `json:"task,omitempty"`
+	SubagentID     string `json:"subagentId,omitempty"`
+	Task           string `json:"task,omitempty"`
+	DelegationID   string `json:"delegationId,omitempty"`
+	ConversationID string `json:"conversationId"`
+	MessageID      string `json:"messageId"`
+	ProjectID      string `json:"projectId"`
+	AgentID        string `json:"agentId"`
+	StartedAt      string `json:"startedAt"`
+	Step           int    `json:"step"`
+	Tool           string `json:"tool"`
+	ToolArgs       string `json:"toolArgs,omitempty"`
+	ToolStartedAt  string `json:"toolStartedAt,omitempty"`
 }
 
 // Trace records one tool invocation inside an agent loop step.
 type Trace struct {
-	Tool   string `json:"tool"`
-	Args   string `json:"args"`
-	Result string `json:"result"`
-	Error  bool   `json:"error,omitempty"`
-	Ms     int64  `json:"ms"`
+	ID        string `json:"id,omitempty"`
+	Step      int    `json:"step,omitempty"`
+	Truncated bool   `json:"truncated,omitempty"`
+	Tool      string `json:"tool"`
+	Args      string `json:"args"`
+	Result    string `json:"result"`
+	Error     bool   `json:"error,omitempty"`
+	Ms        int64  `json:"ms"`
 }
 
 // ModelProfile is one LLM endpoint. Protocol: openai (Chat Completions 兼容) | anthropic (Messages) | gemini (generateContent).

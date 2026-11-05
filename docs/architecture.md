@@ -1,6 +1,6 @@
 # Architecture
 
-DBA is a single Go binary with an embedded web UI. There is no database server, no message queue and no background daemon: the scheduler, the agent runtime and the SSH executor all live inside the desktop process (or inside the browser-preview server during development).
+DBA is a single Go binary with an embedded web UI. The scheduler, persistent conversation queue, agent runtime, and SSH executor all live inside the desktop process (or the browser-preview server during development); no external database, queue service, or daemon is required.
 
 ## Components
 
@@ -12,15 +12,16 @@ DBA is a single Go binary with an embedded web UI. There is no database server, 
 | Discovery | `internal/workbench/discovery.go` | Europe PMC, PubMed and GEO adapters; paging, rate limiting, candidate normalization and de-duplication. |
 | Agents | `internal/workbench/agent.go` | Preset personas, validated command tools (`agent_tools.go`), the bounded tool-use loop, shared project chat and the batch reviewer. `agent_delegation.go` handles mentions and main-agent delegation to specialists. |
 | LLM | `internal/workbench/llm.go` | Protocol adapters that translate a neutral conversation model to OpenAI Chat Completions, Anthropic Messages and Gemini generateContent. |
+| Conversations | `internal/workbench/conversations.go`, `frontend/conversations.js` | Independent histories, durable message queues, cancellation, crash recovery, drafts, and tool execution timelines. |
 | Executor | `internal/workbench/ssh.go` | The `Executor` interface and its SSH implementation: probe, idempotent start, poll, resumable verified sync. |
 | HTTP | `internal/workbench/http.go` | Serves embedded assets and the JSON API; enforces same-origin, JSON-only POSTs and a 4 MiB body limit. |
-| Frontend | `frontend/workbench.js` | A single vanilla-JS file rendering ten views from the state snapshot; polls `/api/state` every 3 s and re-renders only when the snapshot changes and no field is being edited. |
+| Frontend | `frontend/workbench.js`, `frontend/conversations.js` | Vanilla JS rendering the workbench and conversations from state snapshots. Polls `/api/state` every 3 s; conversation updates preserve draft input and scroll position, including while typing. |
 
 The desktop shell (`main.go`) wires `Store → Service → Loop` and hands the HTTP handler to Wails as the asset handler. `cmd/dba-server` does the same behind `net/http` on `127.0.0.1` for browser development; both share every line of application code.
 
 ## Data model
 
-All entities live in one `State` document (schema version 2):
+All entities live in one `State` document (schema version 3):
 
 ```
 State
@@ -37,6 +38,8 @@ State
 │                   failures, retryAt, remoteDir, log tail, error, help, resumeStatus
 ├── Artifacts[]     name, local path, SHA-256, size, job/project/accession
 ├── Messages[]      workspace conversations (before selecting a project)
+├── Conversations[] conversation titles, project/agent scope, pins and archives
+├── ChatQueuePaused scope-level queue pause state (requests live in Messages[])
 ├── Events[]        audit trail (capped at 2000), kinds: user · search · review · queue ·
 │                   dispatch · repair · help · sync · success · server · agent · error
 └── Settings        paused, intervalSeconds, maxRetries, Models[], Agents[]
@@ -80,13 +83,13 @@ Back-off is `min(300, 10 × 2^min(n,5))` seconds: 20 s, 40 s, 80 s, 160 s, then 
 4. Only then are `queued` jobs dispatched. Reservation is a single transactional update that checks the server's `maxJobs` and `cpuQuota` and the pipeline's per-project `concurrency` against all in-flight jobs (including help requests whose resume phase is active). If any budget is exceeded, the job simply stays queued.
 5. Per-operation timeouts: 45 s for start/poll, 30 min for sync.
 
-Shutdown cancels the service context; an operation that fails because of shutdown does not mutate state, so the next launch resumes from the last durable snapshot.
+Shutdown cancels the service context. Remote-job supervision resumes from its last durable snapshot on the next launch. Conversation requests retain completed changes, record an interruption, and leave subsequent messages paused for explicit review and resumption.
 
 ## Persistence
 
 - Every mutation goes through `Store.Update(fn)`. The previous state is captured, `fn` runs, and on error the state is restored byte-for-byte.
 - On success the whole document is marshalled, written to a temp file in the workspace, fsynced, and renamed over `workbench.json`. A crash leaves either the old or the new file, never a mix.
-- `Open` refuses to load a file it cannot parse ("corrupted, original preserved") and refuses unknown schema versions. Schema 1 workspaces (v0.1) are migrated in memory: the flat model settings become a model profile with the `openai` protocol and untagged messages are attributed to the Project Assistant.
+- `Open` refuses to load a file it cannot parse ("corrupted, original preserved") and refuses unknown schema versions. Schema 1 workspaces (v0.1) migrate their flat model settings into an `openai` profile and attribute untagged messages to the Project Assistant. Schema 1 and 2 histories then receive stable conversation/message IDs; migration and interrupted-request recovery are saved atomically before opening the workspace.
 - Agent presets are merged on open: canonical order, icons and tool scopes always come from code; the user's instructions, model choice and step budget are preserved.
 
 ## Security boundaries

@@ -235,7 +235,7 @@ func TestDelegationGuardsAndCancellation(t *testing.T) {
 		t.Fatal("cancellation was swallowed")
 	}
 	messages := s.Store.Snapshot().Projects[0].Messages
-	if requests != 1 || len(messages) != 3 || !messages[1].Error || !strings.Contains(messages[2].Content, "中断") || len(s.AgentRuns()) != 0 {
+	if requests != 1 || len(messages) != 3 || !messages[1].Error || messages[2].Status != "cancelled" || len(s.AgentRuns()) != 0 {
 		t.Fatalf("cancellation lost trace or leaked run: %#v", messages)
 	}
 }

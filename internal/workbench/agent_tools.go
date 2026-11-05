@@ -285,6 +285,17 @@ func (s *Service) agentProgress(pid, tool string, step int) {
 	defer s.agentMu.Unlock()
 	if run, ok := s.agentRuns[pid]; ok {
 		run.Tool, run.Step = tool, step
+		run.ToolArgs, run.ToolStartedAt = "", ""
+		s.agentRuns[pid] = run
+	}
+}
+
+func (s *Service) agentToolProgress(pid string, call ToolCall, step int) {
+	s.agentMu.Lock()
+	defer s.agentMu.Unlock()
+	if run, ok := s.agentRuns[pid]; ok {
+		run.Tool, run.Step = call.Name, step
+		run.ToolArgs, run.ToolStartedAt = clip(string(call.Args), 8000), now()
 		s.agentRuns[pid] = run
 	}
 }

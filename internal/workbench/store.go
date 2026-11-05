@@ -36,6 +36,7 @@ func Open(root string) (*Store, error) {
 	}
 	s := &Store{root: abs, state: State{Schema: SchemaVersion, Projects: []Project{}, Servers: []Server{}, Jobs: []Job{}, Artifacts: []Artifact{}, Events: []Event{}, Settings: Settings{IntervalSeconds: 60, MaxRetries: 3, Models: []ModelProfile{}}}}
 	b, err := os.ReadFile(filepath.Join(abs, "workbench.json"))
+	changed := false
 	if err == nil {
 		if err = json.Unmarshal(b, &s.state); err != nil {
 			return nil, fmt.Errorf("工作空间文件损坏，已保留原文件: %w", err)
@@ -53,7 +54,12 @@ func Open(root string) (*Store, error) {
 					s.state.Projects[i].Messages[k].Agent = "assistant"
 				}
 			}
+			s.state.Schema = 2
+		}
+		if s.state.Schema == 2 {
+			migrateConversations(&s.state)
 			s.state.Schema = SchemaVersion
+			changed = true
 		}
 		if s.state.Schema != SchemaVersion {
 			return nil, fmt.Errorf("不支持工作空间格式 %d", s.state.Schema)
@@ -65,6 +71,18 @@ func Open(root string) (*Store, error) {
 		s.state.Settings.Models = []ModelProfile{}
 	}
 	s.state.Settings.Agents = withPresets(s.state.Settings.Agents)
+	if s.state.Conversations == nil {
+		s.state.Conversations = []Conversation{}
+	}
+	if s.state.ChatQueuePaused == nil {
+		s.state.ChatQueuePaused = map[string]bool{}
+	}
+	changed = recoverConversations(&s.state) || changed
+	if changed {
+		if err := s.Update(func(*State) error { return nil }); err != nil {
+			return nil, err
+		}
+	}
 	return s, nil
 }
 
