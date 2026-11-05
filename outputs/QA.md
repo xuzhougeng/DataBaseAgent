@@ -21,4 +21,4 @@
 - 模型请求与证据校验通过受控 HTTP 响应验证；没有配置或调用真实模型账号。
 - 验收工作空间位于 `.tmp/`，不随成品分发；应用默认从空工作空间开始。
 
-`DBA-overview.jpg` 为本机预览截图，包含明确标记的验收项目，以及两条真实检索候选的统计。
+`docs/manuscript/figure5-overview-screenshot.jpg`（原 `DBA-overview.jpg`）为本机预览截图，包含明确标记的验收项目，以及两条真实检索候选的统计。
