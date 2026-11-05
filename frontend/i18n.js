@@ -2,6 +2,21 @@
 // ponytail: Chinese source string is the key; missing English entries fall back to Chinese.
 let lang=(()=>{try{return localStorage.getItem('dba-lang')}catch{}})()||(navigator.language.startsWith('zh')?'zh':'en');
 const EN={
+"一个项目，一条主对话。输入 @ 调度子 Agent，主 Agent 也会按需分工。":"One project, one conversation. Mention a subagent with @, or let the main agent delegate.",
+"项目主对话":"Project conversation",
+"主 Agent":"Main agent",
+"子 Agent":"Subagent",
+"主 Agent 统筹 · 子 Agent 按需协作":"Led by the main agent · supported by specialist subagents",
+"主 Agent 持续跟进项目，协调检索、复核、流程和运维。":"The main agent follows your project and coordinates search, review, pipelines and operations.",
+"直接描述目标，或输入 @ 选择一位子 Agent 参与。":"Describe your goal, or type @ to bring in a subagent.",
+"调度子 Agent":"Delegate to a subagent",
+"描述项目目标，输入 @ 调度子 Agent…":"Describe your goal, or type @ to delegate to a subagent…",
+"主 Agent 已委派 {a}":"Main agent delegated to {a}",
+"子任务完成":"Subtask completed",
+"执行中断":"Interrupted",
+"子任务与结果保留在这条对话中，由主 Agent 汇总并继续推进。":"Subtasks and results stay in this conversation. The main agent summarizes and follows through.",
+"主 Agent 负责主对话；子 Agent 可通过 @ 或由主 Agent 调度。点击角色编辑配置。":"The main agent leads the conversation. Use @ or let it delegate to subagents. Click a role to configure it.",
+"先为主 Agent 配置可用模型":"Configure a working model for the main agent first",
 "项目助手":"Project assistant",
 "检索策略师":"Search strategist",
 "复核员":"Reviewer",

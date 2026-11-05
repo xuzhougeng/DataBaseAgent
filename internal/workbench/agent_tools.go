@@ -49,6 +49,7 @@ func init() {
 		"baseUrl": strParam("API 服务前缀"), "model": strParam("模型 ID"), "apiKeyEnv": strParam("已有 API Key 环境变量名称；保留系统凭据库中的密钥"),
 	})
 	mutations := map[string]toolSpec{
+		"delegate_agent":    {Desc: "委派一个子 Agent 执行具体任务，并返回实际结果。scout 检索、reviewer 复核、pipeline 流程、operator 运维。子 Agent 使用自己的模型和受限工具，共享当前项目与对话背景；结果保存在主对话中。仅主助手可调用，每轮最多 8 次，不得重复派发已完成任务。", Workspace: true, Params: obj(map[string]any{"agentId": enumParam("scout", "reviewer", "pipeline", "operator"), "task": strParam("明确的子任务、要求和预期结果；不得扩大用户授权范围"), "projectId": strParam("省略使用当前项目；工作空间对话可指定项目 ID")}, "agentId", "task")},
 		"create_project":    {Desc: "创建项目，返回 projectId。后续工具用该 ID 操作新项目。", Params: obj(map[string]any{"name": strParam("项目名称"), "description": strParam("研究目标")}, "name"), Workspace: true, Action: "createProject"},
 		"update_project":    {Desc: "修改项目名称、研究目标、对象、数据类型、纳入标准或检索策略。仅更新提供的字段。", Params: project, Action: "saveProject"},
 		"search":            {Desc: "执行真实检索并保存候选与检索历史；省略 query/source 使用已保存的策略。", Params: obj(map[string]any{"query": strParam("检索式"), "source": enumParam("Europe PMC", "PubMed", "GEO"), "limit": intParam(1, 1000)}), Action: "search"},

@@ -10,7 +10,7 @@ DBA is a single Go binary with an embedded web UI. There is no database server, 
 | Service | `internal/workbench/service.go` | Dispatches UI commands (`createProject`, `review`, `lockPipeline`, `launch`, `saveModel`, …), validates input, enforces quotas and the recorded-inclusion gate. |
 | Loop | `internal/workbench/loop.go` | The supervision loop: wakes every `intervalSeconds`, observes in-flight jobs, dispatches queued jobs within quotas, classifies failures, schedules retries, escalates to help requests, archives results. |
 | Discovery | `internal/workbench/discovery.go` | Europe PMC, PubMed and GEO adapters; paging, rate limiting, candidate normalization and de-duplication. |
-| Agents | `internal/workbench/agent.go` | Preset personas, read tools and validated command tools (`agent_tools.go`), the bounded tool-use loop, chat history and the batch reviewer. |
+| Agents | `internal/workbench/agent.go` | Preset personas, validated command tools (`agent_tools.go`), the bounded tool-use loop, shared project chat and the batch reviewer. `agent_delegation.go` handles mentions and main-agent delegation to specialists. |
 | LLM | `internal/workbench/llm.go` | Protocol adapters that translate a neutral conversation model to OpenAI Chat Completions, Anthropic Messages and Gemini generateContent. |
 | Executor | `internal/workbench/ssh.go` | The `Executor` interface and its SSH implementation: probe, idempotent start, poll, resumable verified sync. |
 | HTTP | `internal/workbench/http.go` | Serves embedded assets and the JSON API; enforces same-origin, JSON-only POSTs and a 4 MiB body limit. |
@@ -31,7 +31,7 @@ State
 │   ├── Searches[]     query, source, total hits, fetched, added, timestamp
 │   ├── Draft          editable Pipeline
 │   ├── Versions[]     locked, immutable Pipelines (monotonic version numbers)
-│   └── Messages[]     agent conversations with per-call Trace
+│   └── Messages[]     one project conversation, child-task results and per-call Trace
 ├── Servers[]       host, port, user, key path, work dir, CPU quota, max jobs, probe result
 ├── Jobs[]          frozen copies of input Candidate + Pipeline + Server, status, attempt,
 │                   failures, retryAt, remoteDir, log tail, error, help, resumeStatus
