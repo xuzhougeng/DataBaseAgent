@@ -48,30 +48,6 @@ func Handler(s *Service, assets fs.FS) http.Handler {
 				return
 			}
 			write(map[string]string{"text": text})
-		case r.Method == "GET" && r.URL.Path == "/api/manifest":
-			state := s.Store.Snapshot()
-			pid := r.URL.Query().Get("projectId")
-			p, e := projectByID(&state, pid)
-			if e != nil {
-				w.WriteHeader(404)
-				write(map[string]string{"error": e.Error()})
-				return
-			}
-			jobs := []Job{}
-			artifacts := []Artifact{}
-			for _, j := range state.Jobs {
-				if j.ProjectID == pid {
-					j.Server.KeyPath = ""
-					jobs = append(jobs, j)
-				}
-			}
-			for _, a := range state.Artifacts {
-				if a.ProjectID == pid {
-					artifacts = append(artifacts, a)
-				}
-			}
-			w.Header().Set("Content-Disposition", `attachment; filename="dba_manifest.json"`)
-			write(map[string]any{"schema": SchemaVersion, "project": p, "jobs": jobs, "artifacts": artifacts, "exportedAt": now()})
 		case r.Method == "POST":
 			if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 				w.WriteHeader(415)

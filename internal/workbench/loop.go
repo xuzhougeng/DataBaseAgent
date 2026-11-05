@@ -262,6 +262,38 @@ func (s *Service) operationError(j Job, err error) {
 	})
 }
 
+// ExportManifest writes the project's provenance manifest into its local results directory and returns the path.
+// ponytail: written server-side because the macOS WebView (WKWebView) ignores blob downloads.
+func (s *Service) ExportManifest(pid string) (string, error) {
+	state := s.Store.Snapshot()
+	p, e := projectByID(&state, pid)
+	if e != nil {
+		return "", e
+	}
+	jobs, artifacts := []Job{}, []Artifact{}
+	for _, j := range state.Jobs {
+		if j.ProjectID == pid {
+			j.Server.KeyPath = ""
+			jobs = append(jobs, j)
+		}
+	}
+	for _, a := range state.Artifacts {
+		if a.ProjectID == pid {
+			artifacts = append(artifacts, a)
+		}
+	}
+	b, e := json.MarshalIndent(map[string]any{"schema": SchemaVersion, "project": p, "jobs": jobs, "artifacts": artifacts, "exportedAt": now()}, "", "  ")
+	if e != nil {
+		return "", e
+	}
+	dir := filepath.Join(s.Store.Root(), "projects", pid, "results")
+	if e = os.MkdirAll(dir, 0700); e != nil {
+		return "", e
+	}
+	name := filepath.Join(dir, "dba_manifest.json")
+	return name, os.WriteFile(name, b, 0600)
+}
+
 func writeManifest(root string, j Job, artifacts []Artifact) error {
 	dir := filepath.Join(root, "projects", j.ProjectID, "results", j.ID)
 	if e := os.MkdirAll(dir, 0700); e != nil {

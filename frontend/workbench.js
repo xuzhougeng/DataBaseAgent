@@ -6,7 +6,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 
 let db={projects:[],servers:[],jobs:[],artifacts:[],events:[],settings:{}};
 let meta={},lastState='',loading=false;
-const ui={page:'projects',projectId:'',filter:'pending',candidateId:'',jobFilter:'all',jobQuery:'',agentId:'',modelId:'',busy:new Set(),asideHidden:(()=>{try{return localStorage.getItem('dba-aside')==='hidden'}catch{}})()};
+const ui={page:'projects',projectId:'',filter:'pending',candidateId:'',jobFilter:'all',jobQuery:'',agentId:'',modelId:'',busy:new Set(),dirty:{},chatDraft:'',asideHidden:(()=>{try{return localStorage.getItem('dba-aside')==='hidden'}catch{}})()};
 const protocolNames={openai:'OpenAI Chat Completions 兼容',anthropic:'Anthropic Messages',gemini:'Google Gemini'};
 const protocolHints={openai:'例如 https://api.openai.com/v1；DeepSeek、Qwen、Ollama、vLLM、OpenRouter 等兼容服务同理，应用追加 /chat/completions',anthropic:'例如 https://api.anthropic.com/v1，应用追加 /messages；模型 ID 如 claude-opus-5-5',gemini:'例如 https://generativelanguage.googleapis.com/v1beta，应用追加 /models/{模型}:generateContent'};
 const labels={queued:'排队中',starting:'提交中',running:'运行中',retry_wait:'等待重试',syncing:'结果同步',succeeded:'已完成',needs_help:'需要协助',pending:'待确认',accepted:'已纳入',excluded:'已排除',include:'建议纳入',exclude:'建议排除',uncertain:'需要确认',online:'连接正常',unchecked:'待检查',error:'连接异常'};
@@ -68,7 +68,18 @@ function render(){
   const p=current();
   if(!p&&!['projects','servers','agent','settings'].includes(ui.page))ui.page='projects';
   const pages={projects:allProjects,overview,search:searchPage,review:reviewPage,workflow:workflowPage,jobs:jobsPage,servers:serversPage,results:resultsPage,agent:agentPage,settings:settingsPage};
-  document.getElementById('app').innerHTML=`<div class="app ${ui.asideHidden?'aside-hidden':''}">${sidebar(p)}<main>${(pages[ui.page]||allProjects)()}</main>${aside(p)}</div>`;
+  const body=(pages[ui.page]||allProjects)();// reviewPage may move ui.candidateId, so build it before comparing views
+  // ponytail: the whole app is re-rendered from state (polling every 3 s); when the view is unchanged, carry over
+  // scroll positions and unsaved field edits so background refreshes neither jump to the top nor wipe input.
+  const view=ui.page+'|'+ui.projectId,form=view+'|'+(ui.page==='review'?ui.candidateId:''),chatKey=ui.projectId+'|'+currentAgent()?.id;
+  const scrolls=view===ui.view?['.sidebar','.candidate-list','.aside-feed',...(form===ui.form?['main']:[])].map(s=>[s,document.querySelector(s)?.scrollTop]):[];
+  const log=document.querySelector('.chat-log'),logEnd=!log||chatKey!==ui.chatKey||log.scrollHeight-log.scrollTop-log.clientHeight<24,logTop=log?.scrollTop;
+  if(form!==ui.form)ui.dirty={};
+  Object.assign(ui,{view,form,chatKey});
+  document.getElementById('app').innerHTML=`<div class="app ${ui.asideHidden?'aside-hidden':''}">${sidebar(p)}<main>${body}</main>${aside(p)}</div>`;
+  for(const [id,v] of Object.entries(ui.dirty)){const el=document.getElementById(id);if(el)el.value=v;}
+  for(const [s,top] of scrolls){const el=document.querySelector(s);if(el&&top)el.scrollTop=top;}
+  const chat=document.querySelector('.chat-log');if(chat)chat.scrollTop=logEnd?chat.scrollHeight:logTop;
 }
 
 function sidebar(p){
@@ -95,11 +106,11 @@ function aside(p){
   const a=currentAgent(),events=db.events.filter(e=>!e.projectId||e.projectId===ui.projectId).slice(-6).reverse(),helps=helpJobs(),msgs=(p?.messages||[]).filter(m=>m.agent===a?.id).slice(-6),paused=db.settings.paused,ready=p&&a&&meta.ready?.[a.id],busy=ui.busy.has('message');
   if(ui.asideHidden)return `<aside class="aside rail"><button class="icon-button" onclick="toggleAside()" aria-label="${t('展开 Agent 面板')}" title="${t('展开 Agent 面板')}">${I('agent')}</button>${helps.length?`<span class="count warn">${helps.length}</span>`:''}</aside>`;
   return `<aside class="aside"><div class="aside-head">${I('agent')}<div><strong>DBA Agent</strong><small>${paused?t('巡检已暂停，远端进程继续运行'):t('每 {n} 秒巡检 · {m} 个活跃任务',{n:db.settings.intervalSeconds,m:db.jobs.filter(active).length})}</small></div><button class="icon-button" onclick="tick()" aria-label="${t('立即巡检')}" title="${t('立即巡检')}">${I('sync')}</button><button class="icon-button" onclick="toggleAgent()" aria-label="${t(paused?'恢复巡检':'暂停巡检')}" title="${t(paused?'恢复巡检':'暂停巡检')}">${I(paused?'play':'pause')}</button><button class="icon-button" onclick="toggleAside()" aria-label="${t('收起 Agent 面板')}" title="${t('收起 Agent 面板')}">${I('chevron')}</button></div>
-    ${helps.length?`<div>${helps.map(j=>`<div class="help-card"><strong>${I('alert')}${t('{a} 需要你的判断',{a:esc(j.accession)})}</strong><p>${esc(j.help||j.error)}</p>${btn(t('查看并处理'),`jobDetail('${j.id}')`,'small')}</div>`).join('')}</div>`:''}
-    <div><div class="aside-label"><span>${t('最近动态')}</span><span>${t('上次巡检')} ${date(db.lastTick,t('尚未巡检'))}</span></div>${events.length?events.map(e=>`<div class="event ${e.kind==='help'?'warn':e.kind==='error'?'err':''}"><time>${date(e.at)}</time><strong>${esc(e.title)}</strong>${e.detail?`<p>${esc(e.detail)}</p>`:''}${e.jobId?`<button class="text-button" onclick="jobDetail('${e.jobId}')">${t('查看任务')}</button>`:''}</div>`).join(''):`<p class="muted">${t('项目动态会显示在这里。')}</p>`}</div>
+    <div class="aside-feed">${helps.length?`<div>${helps.map(j=>`<div class="help-card"><strong>${I('alert')}${t('{a} 需要你的判断',{a:esc(j.accession)})}</strong><p>${esc(j.help||j.error)}</p>${btn(t('查看并处理'),`jobDetail('${j.id}')`,'small')}</div>`).join('')}</div>`:''}
+    <div><div class="aside-label"><span>${t('最近动态')}</span><span>${t('上次巡检')} ${date(db.lastTick,t('尚未巡检'))}</span></div>${events.length?events.map(e=>`<div class="event ${e.kind==='help'?'warn':e.kind==='error'?'err':''}"><time>${date(e.at)}</time><strong>${esc(e.title)}</strong>${e.detail?`<p>${esc(e.detail)}</p>`:''}${e.jobId?`<button class="text-button" onclick="jobDetail('${e.jobId}')">${t('查看任务')}</button>`:''}</div>`).join(''):`<p class="muted">${t('项目动态会显示在这里。')}</p>`}</div></div>
     <div class="chat"><div class="agent-picker" role="tablist" aria-label="${t('选择 Agent')}">${agents().map(x=>`<button class="agent-pick ${x.id===a?.id?'active':''}" role="tab" aria-selected="${x.id===a?.id}" title="${esc(x.name)} · ${esc(x.description)}" aria-label="${esc(x.name)}" onclick="ui.agentId='${x.id}';render()">${I(x.icon)}</button>`).join('')}<span class="agent-name">${a?esc(a.name):''}</span></div>
-    ${msgs.map(m=>`<div class="msg ${m.role==='user'?'me':''}">${esc(m.content)}${trace(m)}</div>`).join('')}${busy?`<div class="msg thinking">${t('{a} 正在思考，可能会调用工具…',{a:esc(a?.name||'Agent')})}</div>`:''}
-    <div class="chat-box"><textarea id="agent-message" aria-label="${t('向 Agent 提问')}" placeholder="${ready?t('向{a}提问，Enter 发送',{a:esc(a.name)}):t(p?(models().length?'先在偏好设置中为该 Agent 选择可用模型':'先在偏好设置中添加模型'):'先选择一个项目')}" ${ready&&!busy?'':'disabled'} onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAgent();}"></textarea>${btn(t(busy?'思考中…':'发送'),'sendAgent()','primary small','',!ready||busy)}</div></div></aside>`;
+    ${msgs.length||busy?`<div class="chat-log">${msgs.map(m=>`<div class="msg ${m.role==='user'?'me':''}">${esc(m.content)}${trace(m)}</div>`).join('')}${busy?`<div class="msg thinking">${t('{a} 正在思考，可能会调用工具…',{a:esc(a?.name||'Agent')})}</div>`:''}</div>`:''}
+    <div class="chat-box"><textarea id="agent-message" aria-label="${t('向 Agent 提问')}" placeholder="${ready?t('向{a}提问，Enter 发送',{a:esc(a.name)}):t(p?(models().length?'先在偏好设置中为该 Agent 选择可用模型':'先在偏好设置中添加模型'):'先选择一个项目')}" ${ready&&!busy?'':'disabled'} oninput="ui.chatDraft=this.value" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAgent();}">${esc(ui.chatDraft)}</textarea>${btn(t(busy?'思考中…':'发送'),'sendAgent()','primary small','',!ready||busy)}</div></div></aside>`;
 }
 const trace=m=>m.trace?.length?`<details class="trace"><summary>${t('调用了 {n} 个工具',{n:m.trace.length})}</summary>${m.trace.map(t=>`<div class="trace-row ${t.error?'err':''}"><strong>${esc(t.tool)}</strong><span>${esc(t.args)}</span><small>${t.ms} ms</small><p>${esc(t.result)}</p></div>`).join('')}</details>`:'';
 
@@ -123,8 +134,8 @@ function searchPage(){
 
 function reviewPage(){
   const p=current(),filtered=p.candidates.filter(c=>ui.filter==='all'||c.decision===ui.filter);
-  let c=filtered.find(v=>v.id===ui.candidateId)||filtered[0];if(c)ui.candidateId=c.id;
-  const tabs=`<div class="tabs">${[['pending','待确认'],['accepted','已纳入'],['excluded','已排除'],['all','全部']].map(([key,n])=>`<button class="tab ${ui.filter===key?'active':''}" onclick="ui.filter='${key}';render()">${t(n)} ${key==='all'?p.candidates.length:p.candidates.filter(c=>c.decision===key).length}</button>`).join('')}</div>`;
+  let c=filtered.find(v=>v.id===ui.candidateId)||filtered[Math.min(ui.reviewIndex||0,filtered.length-1)];if(c){ui.candidateId=c.id;ui.reviewIndex=filtered.indexOf(c);}
+  const tabs=`<div class="tabs">${[['pending','待确认'],['accepted','已纳入'],['excluded','已排除'],['all','全部']].map(([key,n])=>`<button class="tab ${ui.filter===key?'active':''}" onclick="ui.filter='${key}';ui.reviewIndex=0;render()">${t(n)} ${key==='all'?p.candidates.length:p.candidates.filter(c=>c.decision===key).length}</button>`).join('')}</div>`;
   return head(t('数据复核'),t('Agent 给出建议与原文依据，是否纳入由你确认并记录理由。'),btn(t(ui.busy.has('reviewAgent')?'正在复核…':'Agent 复核待确认项'),'reviewAgent()','primary','agent',ui.busy.has('reviewAgent')||!pending(p).length))+`<div class="toolbar">${tabs}</div>`+(!c?empty(t(p.candidates.length?'这一分类暂无记录。':'还没有候选数据，先运行检索或导入。'),btn(t('主题与检索'),"go('search')",'small')):`<div class="review-layout"><div class="candidate-list">${filtered.map(a=>`<button class="paper ${a.id===c.id?'selected':''}" onclick="ui.candidateId='${a.id}';render()"><div class="paper-top">${statusBadge(a.decision==='pending'?a.suggestion||'pending':a.decision)}<span>${esc(a.accession||a.source)}</span></div><h3>${esc(a.title)}</h3><small>${esc([a.organism,a.year,a.source].filter(Boolean).join(' · '))}</small></button>`).join('')}</div>
     <section class="card"><div class="card-head"><h2>${esc(c.accession||c.id)}</h2>${statusBadge(c.decision==='pending'?c.suggestion||'pending':c.decision)}</div><div class="content-pad"><div class="detail-title">${esc(c.title)}</div><div class="tags"><span class="tag">${esc(c.source)}</span>${c.organism?`<span class="tag">${esc(c.organism)}</span>`:''}${c.doi?`<span class="tag">DOI ${esc(c.doi)}</span>`:''}</div>
       <h4>${t('Agent 判断')}${c.confidence?' · '+t('置信度')+' '+esc(c.confidence):''}</h4><p class="muted">${esc(c.reason||t('尚未复核。配置模型后可生成建议，也可直接人工核对。'))}</p>${c.evidence?`<div class="evidence">${esc(c.evidence)}</div>`:''}
@@ -178,6 +189,8 @@ function toast(message){document.getElementById('toast-root').innerHTML=`<div cl
 function modal(title,body,actions=''){document.getElementById('modal-root').innerHTML=`<div class="modal-backdrop" onclick="if(event.target===this)closeModal()"><section class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="modal-head"><h2>${esc(title)}</h2><button class="icon-button" onclick="closeModal()" aria-label="${t('关闭')}">${I('close')}</button></div><div class="modal-body">${body}</div><div class="modal-actions">${btn(t('关闭'),'closeModal()')}${actions}</div></section></div>`;document.querySelector('.modal input,.modal textarea,.modal button')?.focus();}
 function closeModal(){document.getElementById('modal-root').innerHTML='';}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+document.addEventListener('input',e=>{const el=e.target;if(el.id&&el.closest('main'))ui.dirty[el.id]=el.value;});
+document.addEventListener('click',e=>{const a=e.target.closest('a[href^="http"]');if(!a)return;e.preventDefault();run(()=>request('openURL',{url:a.href}));});
 
 function newProject(){modal(t('新建数据库项目'),field(t('项目名称'),'new-name')+field(t('研究目标'),'new-desc','','textarea'),btn(t('创建项目'),'createProject()','primary','plus'));}
 function createProject(){run(async()=>{const name=val('new-name');if(!name)throw new Error(t('请输入项目名称'));await act('createProject',{name,description:val('new-desc')},'项目已创建');ui.projectId=db.projects.at(-1).id;closeModal();go('search');});}
@@ -210,12 +223,12 @@ function saveModel(){run(async()=>{await act('saveModel',{model:{id:ui.modelId,n
 function deleteModel(mid){const m=models().find(x=>x.id===mid);ui.modelId=mid;modal(t('删除模型'),`<p>${t('删除“{n}”后，使用它的 Agent 回退到列表中的第一个模型。',{n:esc(m.name)})}</p>`,btn(t('确认删除'),'confirmDeleteModel()','primary','trash'));}
 function confirmDeleteModel(){run(async()=>{await act('deleteModel',{modelId:ui.modelId},'模型已删除');closeModal();});}
 function saveAgent(aid){run(()=>act('saveAgent',{agent:{id:aid,system:val(`agent-system-${aid}`),modelId:val(`agent-model-${aid}`),maxSteps:Number(val(`agent-steps-${aid}`))}},'Agent 配置已保存'));}
-function resetAgent(aid){run(()=>act('resetAgent',{agentId:aid},'已恢复默认指令'));}
+function resetAgent(aid){delete ui.dirty[`agent-system-${aid}`];run(()=>act('resetAgent',{agentId:aid},'已恢复默认指令'));}
 function toggleAgent(){run(()=>act('settings',{settings:{...db.settings,paused:!db.settings.paused}},t(db.settings.paused?'巡检已恢复':'自动巡检已暂停')));}
 function tick(){run(()=>act('tick',{},'已发起一次巡检'));}
-function sendAgent(){const message=val('agent-message'),a=currentAgent();if(!message||!a)return;run(()=>act('message',{projectId:ui.projectId,agentId:a.id,message},''));}
+function sendAgent(){const message=val('agent-message'),a=currentAgent();if(!message||!a)return;run(async()=>{await act('message',{projectId:ui.projectId,agentId:a.id,message},'');ui.chatDraft='';render();});}
 function askAgent(aid,jid){const j=db.jobs.find(v=>v.id===jid);if(!j)return;ui.agentId=aid;ui.projectId=j.projectId;closeModal();run(()=>act('message',{projectId:j.projectId,agentId:aid,message:t('请诊断任务 {a}（id {i}）：读取其日志与服务器状态，判断失败原因并给出具体修复步骤。',{a:j.accession,i:j.id})},''));}
 function artifact(aid){run(async()=>{const a=db.artifacts.find(x=>x.id===aid),r=await request('artifact?id='+encodeURIComponent(aid));modal(a.name+' · '+t('预览'),`<p class="muted mono">${esc(a.path)}<br>SHA-256 ${esc(a.sha256)}</p><p class="muted">${t('最多预览前 64 KiB。')}</p>${code(r.text)}`);});}
-function exportManifest(){run(async()=>{const payload=await request('manifest?projectId='+encodeURIComponent(ui.projectId)),blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='dba_manifest.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast(t('产物清单已导出'));});}
+function exportManifest(){run(async()=>{const r=await request('exportManifest',{projectId:ui.projectId});toast(t('产物清单已导出到 {p}',{p:r.result}));});}
 
 run(async()=>{await refresh(true);setInterval(()=>{refresh().catch(()=>{});},3000);});
