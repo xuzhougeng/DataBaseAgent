@@ -41,4 +41,5 @@ const EN={
 const t=(s,v={})=>(lang==='en'&&EN[s]||s).replace(/\{(\w+)\}/g,(m,k)=>k in v?v[k]:m);
 function setLang(l){lang=l;try{localStorage.setItem('dba-lang',l)}catch{}document.documentElement.lang=l==='en'?'en':'zh-CN';document.title=t('DBA · 数据库构建工作台');render();}
 EN['DBA · 数据库构建工作台']='DBA · Database Workbench';
+EN['收起 Agent 面板']='Collapse agent panel';EN['展开 Agent 面板']='Expand agent panel';
 document.documentElement.lang=lang==='en'?'en':'zh-CN';document.title=t('DBA · 数据库构建工作台');

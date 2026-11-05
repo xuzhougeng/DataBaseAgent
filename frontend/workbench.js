@@ -6,7 +6,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 
 let db={projects:[],servers:[],jobs:[],artifacts:[],events:[],settings:{}};
 let meta={},lastState='',loading=false;
-const ui={page:'projects',projectId:'',filter:'pending',candidateId:'',jobFilter:'all',jobQuery:'',agentId:'',modelId:'',busy:new Set()};
+const ui={page:'projects',projectId:'',filter:'pending',candidateId:'',jobFilter:'all',jobQuery:'',agentId:'',modelId:'',busy:new Set(),asideHidden:(()=>{try{return localStorage.getItem('dba-aside')==='hidden'}catch{}})()};
 const protocolNames={openai:'OpenAI Chat Completions 兼容',anthropic:'Anthropic Messages',gemini:'Google Gemini'};
 const protocolHints={openai:'例如 https://api.openai.com/v1；DeepSeek、Qwen、Ollama、vLLM、OpenRouter 等兼容服务同理，应用追加 /chat/completions',anthropic:'例如 https://api.anthropic.com/v1，应用追加 /messages；模型 ID 如 claude-opus-5-5',gemini:'例如 https://generativelanguage.googleapis.com/v1beta，应用追加 /models/{模型}:generateContent'};
 const labels={queued:'排队中',starting:'提交中',running:'运行中',retry_wait:'等待重试',syncing:'结果同步',succeeded:'已完成',needs_help:'需要协助',pending:'待确认',accepted:'已纳入',excluded:'已排除',include:'建议纳入',exclude:'建议排除',uncertain:'需要确认',online:'连接正常',unchecked:'待检查',error:'连接异常'};
@@ -68,7 +68,7 @@ function render(){
   const p=current();
   if(!p&&!['projects','servers','agent','settings'].includes(ui.page))ui.page='projects';
   const pages={projects:allProjects,overview,search:searchPage,review:reviewPage,workflow:workflowPage,jobs:jobsPage,servers:serversPage,results:resultsPage,agent:agentPage,settings:settingsPage};
-  document.getElementById('app').innerHTML=`<div class="app">${sidebar(p)}<main>${(pages[ui.page]||allProjects)()}</main>${aside(p)}</div>`;
+  document.getElementById('app').innerHTML=`<div class="app ${ui.asideHidden?'aside-hidden':''}">${sidebar(p)}<main>${(pages[ui.page]||allProjects)()}</main>${aside(p)}</div>`;
 }
 
 function sidebar(p){
@@ -87,12 +87,14 @@ function sidebar(p){
     <div class="label">${t('工作空间')}</div>
     ${item('servers','server','服务器资源',db.servers.length||'')}
     ${item('agent','agent','Agent 中心',helps.length||'',helps.length?'warn':'')}
-    <div class="sidebar-bottom">${item('settings','settings','偏好设置')}<div class="version">v0.2.0 · ${t('本地工作空间')}</div><button class="text-button" onclick="setLang(lang==='en'?'zh':'en')">${lang==='en'?'中文':'English'}</button></div></nav>`;
+    <div class="sidebar-bottom">${item('settings','settings','偏好设置')}<div class="version"><span>v0.2.0 · ${t('本地工作空间')}</span><button class="text-button" onclick="setLang('${lang==='en'?'zh':'en'}')">${lang==='en'?'中文':'English'}</button></div></div></nav>`;
 }
 
+function toggleAside(){ui.asideHidden=!ui.asideHidden;try{localStorage.setItem('dba-aside',ui.asideHidden?'hidden':'')}catch{}render();}
 function aside(p){
   const a=currentAgent(),events=db.events.filter(e=>!e.projectId||e.projectId===ui.projectId).slice(-6).reverse(),helps=helpJobs(),msgs=(p?.messages||[]).filter(m=>m.agent===a?.id).slice(-6),paused=db.settings.paused,ready=p&&a&&meta.ready?.[a.id],busy=ui.busy.has('message');
-  return `<aside class="aside"><div class="aside-head">${I('agent')}<div><strong>DBA Agent</strong><small>${paused?t('巡检已暂停，远端进程继续运行'):t('每 {n} 秒巡检 · {m} 个活跃任务',{n:db.settings.intervalSeconds,m:db.jobs.filter(active).length})}</small></div><button class="icon-button" onclick="tick()" aria-label="${t('立即巡检')}" title="${t('立即巡检')}">${I('sync')}</button><button class="icon-button" onclick="toggleAgent()" aria-label="${t(paused?'恢复巡检':'暂停巡检')}" title="${t(paused?'恢复巡检':'暂停巡检')}">${I(paused?'play':'pause')}</button></div>
+  if(ui.asideHidden)return `<aside class="aside rail"><button class="icon-button" onclick="toggleAside()" aria-label="${t('展开 Agent 面板')}" title="${t('展开 Agent 面板')}">${I('agent')}</button>${helps.length?`<span class="count warn">${helps.length}</span>`:''}</aside>`;
+  return `<aside class="aside"><div class="aside-head">${I('agent')}<div><strong>DBA Agent</strong><small>${paused?t('巡检已暂停，远端进程继续运行'):t('每 {n} 秒巡检 · {m} 个活跃任务',{n:db.settings.intervalSeconds,m:db.jobs.filter(active).length})}</small></div><button class="icon-button" onclick="tick()" aria-label="${t('立即巡检')}" title="${t('立即巡检')}">${I('sync')}</button><button class="icon-button" onclick="toggleAgent()" aria-label="${t(paused?'恢复巡检':'暂停巡检')}" title="${t(paused?'恢复巡检':'暂停巡检')}">${I(paused?'play':'pause')}</button><button class="icon-button" onclick="toggleAside()" aria-label="${t('收起 Agent 面板')}" title="${t('收起 Agent 面板')}">${I('chevron')}</button></div>
     ${helps.length?`<div>${helps.map(j=>`<div class="help-card"><strong>${I('alert')}${t('{a} 需要你的判断',{a:esc(j.accession)})}</strong><p>${esc(j.help||j.error)}</p>${btn(t('查看并处理'),`jobDetail('${j.id}')`,'small')}</div>`).join('')}</div>`:''}
     <div><div class="aside-label"><span>${t('最近动态')}</span><span>${t('上次巡检')} ${date(db.lastTick,t('尚未巡检'))}</span></div>${events.length?events.map(e=>`<div class="event ${e.kind==='help'?'warn':e.kind==='error'?'err':''}"><time>${date(e.at)}</time><strong>${esc(e.title)}</strong>${e.detail?`<p>${esc(e.detail)}</p>`:''}${e.jobId?`<button class="text-button" onclick="jobDetail('${e.jobId}')">${t('查看任务')}</button>`:''}</div>`).join(''):`<p class="muted">${t('项目动态会显示在这里。')}</p>`}</div>
     <div class="chat"><div class="agent-picker" role="tablist" aria-label="${t('选择 Agent')}">${agents().map(x=>`<button class="agent-pick ${x.id===a?.id?'active':''}" role="tab" aria-selected="${x.id===a?.id}" title="${esc(x.name)} · ${esc(x.description)}" aria-label="${esc(x.name)}" onclick="ui.agentId='${x.id}';render()">${I(x.icon)}</button>`).join('')}<span class="agent-name">${a?esc(a.name):''}</span></div>
@@ -102,7 +104,7 @@ function aside(p){
 const trace=m=>m.trace?.length?`<details class="trace"><summary>${t('调用了 {n} 个工具',{n:m.trace.length})}</summary>${m.trace.map(t=>`<div class="trace-row ${t.error?'err':''}"><strong>${esc(t.tool)}</strong><span>${esc(t.args)}</span><small>${t.ms} ms</small><p>${esc(t.result)}</p></div>`).join('')}</details>`:'';
 
 function allProjects(){
-  return head(t('所有项目'),t('{p} 个项目 · {s} 台服务器 · {j} 个任务运行中',{p:db.projects.length,s:db.servers.length,j:db.jobs.filter(active).length}),btn(t('新建项目'),'newProject()','primary','plus'))+`<div class="grid-projects">${db.projects.map(p=>{const s=stage(p),jobs=projectJobs(p.id),attention=pending(p).length||jobs.some(j=>j.status==='needs_help');return `<button class="project-card" onclick="selectProject('${p.id}')"><div class="project-top"><h2>${esc(p.name)}</h2>${badge(t(stageNames[s]),attention?'orange':s?'':'gray')}</div><p>${esc(p.description||t('尚未填写研究目标'))}</p><div class="project-meta">${t('{c} 条候选 · {r} 条待复核 · {j} 个任务运行中 · {a} 份产物',{c:p.candidates.length,r:pending(p).length,j:jobs.filter(active).length,a:projectArtifacts(p.id).length})}</div><div class="progress"><i style="width:${s*20}%"></i></div></button>`;}).join('')}<button class="project-card new" onclick="newProject()">${I('plus')}${t('新建项目')}</button></div>`;
+  return head(t('所有项目'),t('{p} 个项目 · {s} 台服务器 · {j} 个任务运行中',{p:db.projects.length,s:db.servers.length,j:db.jobs.filter(active).length}),btn(t('新建项目'),'newProject()','primary','plus'))+`${db.projects.length?`<div class="grid-projects">${db.projects.map(p=>{const s=stage(p),jobs=projectJobs(p.id),attention=pending(p).length||jobs.some(j=>j.status==='needs_help');return `<button class="project-card" onclick="selectProject('${p.id}')"><div class="project-top"><h2>${esc(p.name)}</h2>${badge(t(stageNames[s]),attention?'orange':s?'':'gray')}</div><p>${esc(p.description||t('尚未填写研究目标'))}</p><div class="project-meta">${t('{c} 条候选 · {r} 条待复核 · {j} 个任务运行中 · {a} 份产物',{c:p.candidates.length,r:pending(p).length,j:jobs.filter(active).length,a:projectArtifacts(p.id).length})}</div><div class="progress"><i style="width:${s*20}%"></i></div></button>`;}).join('')}</div>`:empty(t('尚无项目'))}`;
 }
 
 function overview(){
