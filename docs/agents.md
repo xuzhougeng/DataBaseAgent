@@ -4,11 +4,15 @@ The **AI assistant** is a dedicated page and the default entry point. Describe a
 
 ## Conversations and progress
 
-Choose a project in the navigation selector, or **Workspace chat** to start before a project exists. Workspace conversations are stored in `State.Messages`; project conversations remain in `Project.Messages`. Project tools default to the conversation's project and accept an explicit `projectId`, which is required in workspace chat. The assistant must only use a different project when the user's request calls for it. Candidate and job IDs are checked against the selected tool project.
+Choose a project in the navigation selector, or **Workspace chat** to start before a project exists. Each scope has a searchable conversation history with independent chats, titles, pinned chats, archives, and Markdown export. A conversation belongs to one project (or the workspace) and one agent. Workspace messages remain in `State.Messages`; project messages remain in `Project.Messages`, linked through `conversationId` to `State.Conversations`. Project tools default to the conversation's project and accept an explicit `projectId`, which is required in workspace chat. The assistant must only use a different project when the user's request calls for it. Candidate and job IDs are checked against the selected tool project.
 
-Each agent has its own history and draft input. The last eight messages for that agent are replayed; persisted conversation histories are capped at 200 messages per scope. Messages support basic Markdown, escaped code blocks and expandable tool traces. The input handles Chinese IME composition without sending an unfinished word.
+Each chat has its own draft. Drafts, selected chats, unread counts, and unconfirmed submissions are saved in browser storage under the workspace path. The model receives the last four completed user/reply pairs from that conversation; future queued prompts, other conversations, and failed attempts are excluded. History is retained without the former 200-message truncation. The UI initially renders 30 turns and can load earlier messages without losing the reading position. It preserves expanded tool details, input selection, and scroll position during background updates. A jump-to-latest button appears when reading older messages. The composer grows with the input, uses an accessible round send button, and handles Chinese IME composition without sending an unfinished word.
 
-A user message is saved before model execution. `/api/state` exposes transient `agentRuns` with the agent, project, current step, tool and start time. Each completed call is also saved as an event. If a later model request fails, completed mutations remain committed and an interruption message retains the tool trace. Only one conversation runs at a time in each project or in the workspace conversation.
+`POST /api/enqueueMessage` saves the user message and returns its conversation/message IDs immediately. A client-generated `clientId` makes acceptance idempotent, including when the browser loses the acknowledgement. Execution belongs to the service, so navigating or reloading the page does not cancel it. Within each project or the workspace, messages across conversations and agents run in FIFO order, with at most 20 waiting messages. Separate project queues can run independently. Queued messages can be edited in place or cancelled; users can also pause/resume the queue or stop the active request. The synchronous `message` command remains available for existing callers.
+
+`/api/state` exposes transient `agentRuns` with conversation/message IDs, the current model step, tool arguments, and start times. The chat displays an execution timeline with running, successful, and failed steps, elapsed time, and expandable arguments/results. Completed tool calls are checkpointed on the request and recorded as events. Trace arguments are limited to 8,000 bytes and results to 16,000 bytes; truncated traces are labelled, and all content is HTML-escaped. Cancelling a request does not roll back tools that have already completed.
+
+Failure or stopping the active request pauses the scope's remaining queue. A retry creates a new request in the same conversation and joins the queue; resuming the queue is explicit. After an application restart, in-flight messages become `interrupted`, their completed tool traces are preserved, and waiting messages stay paused. No interrupted tool operation is automatically replayed. Schema 1 and 2 workspaces migrate each legacy agent history into a conversation and preserve the original messages. Migration IDs and recovery changes are written atomically before the workspace opens. A chat with pending messages cannot be archived.
 
 ## The loop
 
@@ -19,8 +23,9 @@ sequenceDiagram
     participant M as Model
     participant T as Tools
     participant S as Service / Store
-    U->>L: goal
-    L->>S: persist user message
+    U->>S: enqueue goal with clientId
+    S-->>U: persisted conversation/message IDs
+    S->>L: run next queued message in scope
     loop up to maxSteps
         L->>M: instructions + history + scoped tools
         M-->>L: text and/or tool calls
@@ -29,11 +34,12 @@ sequenceDiagram
             T->>S: read snapshot or dispatch validated command
             S-->>T: result
             T-->>L: JSON result or error
-            L->>S: persist progress event
+            L->>S: checkpoint tool trace and progress event
         end
     end
     L->>M: conclude if budget exhausted
     L->>S: persist reply or interruption with trace
+    Note over L,S: continue FIFO on success; pause on stop/failure
 ```
 
 Calls in one model reply execute sequentially, each against the latest committed state. A saved query can therefore be used by the next search, and a freshly locked pipeline by the next launch, in the same batch. The default Project Assistant and Reviewer budgets are 20 model steps; the other roles default to 12. Budgets remain configurable from 1–20. Long remote jobs continue under the scheduler after the model finishes its reply.

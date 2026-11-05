@@ -292,9 +292,12 @@ func (s *Service) runTool(ctx context.Context, pid string, a Agent, c ToolCall) 
 
 // ---- Agent loop: model → tool calls → results → model, bounded by MaxSteps, every call traced.
 
-func (s *Service) runAgent(ctx context.Context, a Agent, m ModelProfile, key, system string, turns []Turn, pid string) (string, []Trace, error) {
+func (s *Service) runAgent(ctx context.Context, a Agent, m ModelProfile, key, system string, turns []Turn, pid, mid string) (string, []Trace, error) {
 	defs, trace := toolDefs(a.Tools), []Trace{}
 	for step := 0; step < max(1, a.MaxSteps); step++ {
+		if err := ctx.Err(); err != nil {
+			return "", trace, err
+		}
 		s.agentProgress(pid, "", step+1)
 		reply, e := complete(ctx, m, key, system, turns, defs, false)
 		if e != nil {
@@ -308,11 +311,23 @@ func (s *Service) runAgent(ctx context.Context, a Agent, m ModelProfile, key, sy
 		}
 		turns = append(turns, Turn{Role: "assistant", Text: reply.Text, Calls: reply.Calls})
 		for _, c := range reply.Calls {
+			if err := ctx.Err(); err != nil {
+				return "", trace, err
+			}
 			start := time.Now()
-			s.agentProgress(pid, c.Name, step+1)
+			s.agentToolProgress(pid, c, step+1)
 			out, failed := s.runTool(ctx, pid, a, c)
-			trace = append(trace, Trace{Tool: c.Name, Args: clip(string(c.Args), 300), Result: clip(out, 400), Error: failed, Ms: time.Since(start).Milliseconds()})
+			trace = append(trace, Trace{ID: c.ID, Step: step + 1, Tool: c.Name, Args: clip(string(c.Args), 8000), Result: clip(out, 16000), Truncated: len(c.Args) > 8000 || len(out) > 16000, Error: failed, Ms: time.Since(start).Milliseconds()})
 			if e := s.Store.Update(func(st *State) error {
+				messages, err := scopeMessages(st, pid)
+				if err != nil {
+					return err
+				}
+				msg, err := messageByID(*messages, mid)
+				if err != nil {
+					return err
+				}
+				msg.Trace = append([]Trace(nil), trace...)
 				kind, title := "agent", a.Name+" · "+c.Name+" 已完成"
 				if failed {
 					kind, title = "error", a.Name+" · "+c.Name+" 未完成"
@@ -323,6 +338,7 @@ func (s *Service) runAgent(ctx context.Context, a Agent, m ModelProfile, key, sy
 				return "", trace, e
 			}
 			turns = append(turns, Turn{Role: "tool", CallID: c.ID, Name: c.Name, Text: out})
+			s.agentProgress(pid, "", step+1)
 		}
 	}
 	turns = append(turns, Turn{Role: "user", Text: "工具调用预算已用完。请根据实际工具结果总结已完成、进行中与未完成的步骤，并说明还缺哪些信息；不得声称未执行的操作已完成。"})
@@ -342,94 +358,6 @@ func systemPrompt(a Agent, p *Project) string {
 		scope = fmt.Sprintf("当前项目：%s（id %s）。项目工具默认操作该项目；只有用户指定其他项目时才提供其他 projectId。", p.Name, p.ID)
 	}
 	return a.System + "\n\n" + guardrails + "\n\n" + scope + "现在时间 " + now()
-}
-
-func (s *Service) Chat(ctx context.Context, pid, aid, message string) error {
-	if strings.TrimSpace(message) == "" || len(message) > 8000 {
-		return errors.New("请输入不超过 8000 字节的消息")
-	}
-	state := s.Store.Snapshot()
-	var p *Project
-	var e error
-	if pid != "" {
-		p, e = projectByID(&state, pid)
-		if e != nil {
-			return e
-		}
-	}
-	a, e := agentByID(&state, aid)
-	if e != nil {
-		return e
-	}
-	m, key, e := s.Store.modelWithKey(*a)
-	if e != nil {
-		return e
-	}
-	s.agentMu.Lock()
-	if _, busy := s.agentRuns[pid]; busy {
-		s.agentMu.Unlock()
-		return errors.New("当前对话已有 Agent 正在执行，请等待完成")
-	}
-	s.agentRuns[pid] = AgentRun{ProjectID: pid, AgentID: a.ID, StartedAt: now()}
-	s.agentMu.Unlock()
-	defer func() { s.agentMu.Lock(); delete(s.agentRuns, pid); s.agentMu.Unlock() }()
-	history := state.Messages
-	if p != nil {
-		history = p.Messages
-	}
-	turns := []Turn{}
-	for _, msg := range history {
-		if msg.Agent == a.ID {
-			turns = append(turns, Turn{Role: msg.Role, Text: msg.Content})
-		}
-	}
-	if len(turns) > 8 {
-		turns = turns[len(turns)-8:]
-	}
-	turns = append(turns, Turn{Role: "user", Text: message})
-	appendMessage := func(st *State, msg Message) error {
-		messages := &st.Messages
-		if pid != "" {
-			cur, err := projectByID(st, pid)
-			if err != nil {
-				return err
-			}
-			messages = &cur.Messages
-		}
-		*messages = append(*messages, msg)
-		if len(*messages) > 200 {
-			*messages = (*messages)[len(*messages)-200:]
-		}
-		return nil
-	}
-	if e = s.Store.Update(func(st *State) error {
-		if err := appendMessage(st, Message{Role: "user", Agent: a.ID, Content: message, At: now()}); err != nil {
-			return err
-		}
-		event(st, pid, "", "agent", a.Name+" 开始执行", clip(message, 160))
-		return nil
-	}); e != nil {
-		return e
-	}
-	reply, trace, runErr := s.runAgent(ctx, *a, m, key, systemPrompt(*a, p), turns, pid)
-	if runErr != nil {
-		reply = "本次执行中断：" + runErr.Error() + "。已完成的工具操作保留，请查看调用记录和工作进展。"
-	}
-	e = s.Store.Update(func(st *State) error {
-		if err := appendMessage(st, Message{Role: "assistant", Agent: a.ID, Content: reply, Trace: trace, At: now()}); err != nil {
-			return err
-		}
-		kind, title := "agent", a.Name+" 已回复"
-		if runErr != nil {
-			kind, title = "error", a.Name+" 执行中断"
-		}
-		event(st, pid, "", kind, title, fmt.Sprintf("%s · 调用工具 %d 次", clip(message, 80), len(trace)))
-		return nil
-	})
-	if e != nil {
-		return e
-	}
-	return runErr
 }
 
 // AgentReview is the batch, structured-output path of the reviewer agent (no tools; evidence is verified locally).

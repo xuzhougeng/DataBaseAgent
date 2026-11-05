@@ -1,12 +1,13 @@
 'use strict';
 
 const paths={database:'M4 6c0-4 16-4 16 0s-16 4-16 0Zm0 0v6c0 4 16 4 16 0V6M4 12v6c0 4 16 4 16 0v-6',grid:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',home:'M3 10 12 3l9 7M5 9v12h14V9M9 21v-8h6v8',search:'M20 20l-5-5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0',check:'m5 12 4 4L19 6',review:'M8 3H5v18h14V3h-3M8 2h8v4H8zM8 12l2 2 5-5M8 18h7',flow:'M4 3h6v5H4zM14 16h6v5h-6zM7 8v10h7M10 5h7v11',play:'m8 5 11 7-11 7z',server:'M3 3h18v7H3zM3 14h18v7H3zM6 6h1M6 17h1M11 6h7M11 17h7',folder:'M3 6V4h6l2 3h10v13H3z',agent:'M8 3h8M12 3v3M5 6h14v14H5zM2 10v6M22 10v6M9 11h.1M15 11h.1M9 16h6',settings:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2',plus:'M12 5v14M5 12h14',arrow:'M5 12h14m-5-5 5 5-5 5',chevron:'m9 5 7 7-7 7',clock:'M12 8v5l3 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',alert:'m12 3 10 18H2zM12 9v5M12 18h.1',down:'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',sync:'M3 11a9 9 0 0 1 15-7l3 3M21 3v4h-4M21 13A9 9 0 0 1 6 20l-3-3M3 21v-4h4',close:'M6 6l12 12M18 6 6 18',terminal:'m5 6 5 5-5 5M12 17h7',file:'M5 2h9l5 5v15H5zM14 2v6h5M8 12h8M8 16h6',pause:'M8 5v14M16 5v14',lock:'M5 10h14v11H5zM8 10V6a4 4 0 0 1 8 0v4',edit:'m15 3 6 6-12 12H3v-6zM12 6l6 6',activity:'M2 12h5l3-8 4 16 3-8h5',compass:'M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Zm-5.76-4.24-2.12 6.36-6.36 2.12 2.12-6.36z',wrench:'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',trash:'M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v6M14 10v6',cpu:'M5 5h14v14H5zM9 9h6v6H9zM9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3'};
+Object.assign(paths,{send:'M12 19V5m-6 6 6-6 6 6',chat:'M21 11a8 8 0 0 1-8 8H5l-4 3V11a10 10 0 0 1 20 0Z',pin:'m8 3 8 0-1 6 4 4v2H5v-2l4-4-1-6ZM12 15v7',archive:'M3 3h18v5H3zM5 8v13h14V8M9 12h6',copy:'M8 8h13v13H8zM16 8V3H3v13h5',stop:'M5 5h14v14H5z'});
 const I=n=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[n]||paths.file}"/></svg>`;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 let db={projects:[],servers:[],jobs:[],artifacts:[],events:[],settings:{}};
 let meta={},lastState='',loading=false;
-const ui={page:'agent',projectId:null,filter:'pending',candidateId:'',jobFilter:'all',jobQuery:'',agentId:'',modelId:'',busy:new Set(),dirty:{},chatDrafts:{},asideHidden:(()=>{try{return localStorage.getItem('dba-aside')==='hidden'}catch{}})()};
+const ui={page:'agent',projectId:null,filter:'pending',candidateId:'',jobFilter:'all',jobQuery:'',agentId:'',modelId:'',busy:new Set(),dirty:{},chatDrafts:{},conversationSelections:{},chatReadCounts:{},chatOutbox:{},chatSending:new Set(),chatScrolls:{},chatDetails:{},historyOpen:window.innerWidth>=1200,historyQuery:'',historyArchived:false,asideHidden:(()=>{try{return localStorage.getItem('dba-aside')==='hidden'}catch{}})()};
 const protocolNames={openai:'OpenAI Chat Completions 兼容',anthropic:'Anthropic Messages',gemini:'Google Gemini'};
 const protocolHints={openai:'例如 https://api.openai.com/v1；DeepSeek、Qwen、Ollama、vLLM、OpenRouter 等兼容服务同理，应用追加 /chat/completions',anthropic:'例如 https://api.anthropic.com/v1，应用追加 /messages；模型 ID 如 claude-opus-5-5',gemini:'例如 https://generativelanguage.googleapis.com/v1beta，应用追加 /models/{模型}:generateContent'};
 const labels={queued:'排队中',starting:'提交中',running:'运行中',retry_wait:'等待重试',syncing:'结果同步',succeeded:'已完成',needs_help:'需要协助',pending:'待确认',accepted:'已纳入',excluded:'已排除',include:'建议纳入',exclude:'建议排除',uncertain:'需要确认',online:'连接正常',unchecked:'待检查',error:'连接异常'};
@@ -39,20 +40,23 @@ const table=(cols,rows,emptyText)=>`<div class="table-wrap"><table><thead><tr>${
 async function request(path,body){
   const res=await fetch('/api/'+path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data=await res.json();
-  if(!res.ok)throw new Error(data.error||t('请求失败 {s}',{s:res.status}));
+  if(!res.ok){const error=new Error(data.error||t('请求失败 {s}',{s:res.status}));error.status=res.status;throw error;}
   return data;
 }
 async function refresh(force=false){
-  if(loading)return;
-  loading=true;
+  if(loading){await loading;if(force)return refresh(true);return;}
+  loading=request('state');
   try{
-    const reply=await request('state'),signature=JSON.stringify(reply);
-    db=reply.state;meta=reply;
+    const reply=await loading,signature=JSON.stringify(reply),wasDisconnected=ui.connectionError;
+    db=reply.state;meta=reply;ui.connectionError=false;
     if(ui.projectId===null)ui.projectId=db.projects[0]?.id||'';
     if(ui.projectId&&!current())ui.projectId='';
-    const editing=document.querySelector('#modal-root .modal')||document.activeElement?.matches('input,textarea,select');
-    if(force||signature!==lastState&&!editing){lastState=signature;render();}
-  }finally{loading=false;}
+    syncChatState();
+    const focused=document.activeElement,chatEditing=focused?.matches('#agent-message,#chat-history-search');
+    const editing=document.querySelector('#modal-root .modal')||focused?.matches('input,textarea,select')&&!chatEditing||ui.chatComposing;
+    if(force||wasDisconnected||signature!==lastState&&!editing){lastState=signature;render();}
+  }catch(error){if(!ui.connectionError){ui.connectionError=true;if(ui.page==='agent'&&!ui.chatComposing)render();}throw error;}
+  finally{loading=false;}
 }
 async function act(action,body={},message=t('已保存')){
   if(ui.busy.has(action))return;
@@ -62,31 +66,30 @@ async function act(action,body={},message=t('已保存')){
 }
 function run(fn){Promise.resolve().then(fn).catch(e=>toast(e.message||String(e)));}
 function go(page){ui.page=page;render();document.querySelector('main')?.scrollTo(0,0);}
-function selectProject(id){ui.projectId=id;ui.candidateId='';if(ui.page!=='agent')ui.page=id?'overview':'agent';render();}
-const conversationKey=()=>`${ui.projectId||''}|${currentAgent()?.id||'assistant'}`;
-const chatDraft=()=>ui.chatDrafts[conversationKey()]||'';
-function setChatDraft(value){ui.chatDrafts[conversationKey()]=value;}
-function chooseAgent(aid){ui.agentId=aid;render();}
+function selectProject(id){ui.projectId=id;ui.candidateId='';ui.historyQuery='';syncChatState();saveChatUI();if(ui.page!=='agent')ui.page=id?'overview':'agent';render();}
 function usePrompt(index){setChatDraft(t(agentPrompts[index]));render();document.getElementById('agent-message')?.focus();}
 const agentPrompts=['根据项目目标，完成检索、复核、流程配置并创建处理任务。','检查当前进展，找出阻塞环节并处理可以解决的问题。','查看已完成任务和产物，汇总数据来源与处理结果。'];
 function stage(p){if(projectJobs(p.id).some(j=>j.status==='succeeded'))return 5;if(projectJobs(p.id).length||p.draft.locked)return 4;if(p.candidates.some(c=>c.decision==='accepted'))return 3;if(p.candidates.length)return 2;if(p.criteria&&p.query)return 1;return 0;}
 
 function render(){
-  const p=current();
+  const p=current(),focus=document.activeElement,focusedId=focus?.id,selection=focusedId&&typeof focus.selectionStart==='number'?[focus.selectionStart,focus.selectionEnd]:null;
+  const oldLog=document.querySelector('.chat-log');
+  if(oldLog&&ui.chatKey)ui.chatScrolls[ui.chatKey]={top:oldLog.scrollTop,bottom:oldLog.scrollHeight-oldLog.scrollTop-oldLog.clientHeight<48};
+  document.querySelectorAll('[data-detail-id]').forEach(el=>ui.chatDetails[el.dataset.detailId]=el.open);
   if(!p&&!['projects','servers','agent','agent-center','settings'].includes(ui.page))ui.page='projects';
   const pages={projects:allProjects,overview,search:searchPage,review:reviewPage,workflow:workflowPage,jobs:jobsPage,servers:serversPage,results:resultsPage,agent:agentPage,'agent-center':agentCenterPage,settings:settingsPage};
-  const body=(pages[ui.page]||allProjects)();// reviewPage may move ui.candidateId, so build it before comparing views
-  // ponytail: the whole app is re-rendered from state (polling every 3 s); when the view is unchanged, carry over
-  // scroll positions and unsaved field edits so background refreshes neither jump to the top nor wipe input.
-  const view=ui.page+'|'+ui.projectId,form=view+'|'+(ui.page==='review'?ui.candidateId:''),chatKey=ui.projectId+'|'+currentAgent()?.id;
-  const scrolls=view===ui.view?['.sidebar','.candidate-list','.aside-feed',...(form===ui.form?['main']:[])].map(s=>[s,document.querySelector(s)?.scrollTop]):[];
-  const log=document.querySelector('.chat-log'),logEnd=!log||chatKey!==ui.chatKey||log.scrollHeight-log.scrollTop-log.clientHeight<24,logTop=log?.scrollTop;
+  const body=(pages[ui.page]||allProjects)();
+  const view=ui.page+'|'+ui.projectId,form=view+'|'+(ui.page==='review'?ui.candidateId:''),chatKey=ui.page==='agent'?conversationKey():'';
+  const scrolls=view===ui.view?['.sidebar','.candidate-list','.aside-feed','.history-list',...(form===ui.form?['main']:[])].map(s=>[s,document.querySelector(s)?.scrollTop]):[];
   if(form!==ui.form)ui.dirty={};
   Object.assign(ui,{view,form,chatKey});
   document.getElementById('app').innerHTML=`<div class="app ${ui.asideHidden?'aside-hidden':''}">${sidebar(p)}<main class="${ui.page==='agent'?'assistant-main':''}">${body}</main>${aside(p)}</div>`;
   for(const [id,v] of Object.entries(ui.dirty)){const el=document.getElementById(id);if(el)el.value=v;}
+  document.querySelectorAll('[data-detail-id]').forEach(el=>{if(el.dataset.detailId in ui.chatDetails)el.open=ui.chatDetails[el.dataset.detailId];});
   for(const [s,top] of scrolls){const el=document.querySelector(s);if(el&&top)el.scrollTop=top;}
-  const chat=document.querySelector('.chat-log');if(chat)chat.scrollTop=logEnd?chat.scrollHeight:logTop;
+  const chat=document.querySelector('.chat-log'),position=ui.chatScrolls[chatKey];if(chat)chat.scrollTop=!position||position.bottom?chat.scrollHeight:position.top;
+  if(['agent-message','chat-history-search'].includes(focusedId)){const el=document.getElementById(focusedId);if(el&&!el.disabled){el.focus({preventScroll:true});if(selection)el.setSelectionRange(...selection);}}
+  resizeComposer();onChatScroll();
 }
 
 function sidebar(p){
@@ -120,7 +123,6 @@ function aside(p){
     <div class="aside-label"><span>${t('最近动态')}</span><span>${t('上次巡检')} ${date(db.lastTick,t('尚未巡检'))}</span></div>${events.length?events.map(e=>`<div class="event ${e.kind==='help'?'warn':e.kind==='error'?'err':''}"><time>${date(e.at)}</time><strong>${esc(e.title)}</strong>${e.detail?`<p>${esc(e.detail)}</p>`:''}${e.jobId?`<button class="text-button" onclick="jobDetail('${e.jobId}')">${t('查看任务')}</button>`:''}</div>`).join(''):`<p class="muted">${t('项目动态会显示在这里。')}</p>`}</div>
     ${ui.page!=='agent'?btn(t('打开 AI 助手'),"go('agent')",'small','agent'):''}</aside>`;
 }
-const trace=m=>m.trace?.length?`<details class="trace"><summary>${t('调用了 {n} 个工具',{n:m.trace.length})}</summary>${m.trace.map(t=>`<div class="trace-row ${t.error?'err':''}"><strong>${esc(t.tool)}</strong><span>${esc(t.args)}</span><small>${t.ms} ms</small><p>${esc(t.result)}</p></div>`).join('')}</details>`:'';
 
 function allProjects(){
   return head(t('所有项目'),t('{p} 个项目 · {s} 台服务器 · {j} 个任务运行中',{p:db.projects.length,s:db.servers.length,j:db.jobs.filter(active).length}),btn(t('新建项目'),'newProject()','primary','plus'))+`${db.projects.length?`<div class="grid-projects">${db.projects.map(p=>{const s=stage(p),jobs=projectJobs(p.id),attention=pending(p).length||jobs.some(j=>j.status==='needs_help');return `<button class="project-card" onclick="selectProject('${p.id}')"><div class="project-top"><h2>${esc(p.name)}</h2>${badge(t(stageNames[s]),attention?'orange':s?'':'gray')}</div><p>${esc(p.description||t('尚未填写研究目标'))}</p><div class="project-meta">${t('{c} 条候选 · {r} 条待复核 · {j} 个任务运行中 · {a} 份产物',{c:p.candidates.length,r:pending(p).length,j:jobs.filter(active).length,a:projectArtifacts(p.id).length})}</div><div class="progress"><i style="width:${s*20}%"></i></div></button>`;}).join('')}</div>`:empty(t('尚无项目'))}`;
@@ -187,15 +189,6 @@ function messageMarkdown(content){
     }).join('');
   }).join('');
 }
-function agentPage(){
-  const p=current(),a=currentAgent(),m=a&&agentModel(a),ready=a&&meta.ready?.[a.id],messages=(p?.messages||db.messages||[]).filter(msg=>msg.agent===a?.id),activeRun=(meta.agentRuns||[]).find(r=>r.projectId===(ui.projectId||'')),sending=ui.sending?.projectId===(ui.projectId||'')&&ui.sending?.agentId===a?.id,busy=sending||activeRun?.agentId===a?.id,blocked=!!activeRun||ui.busy.has('message');
-  return head(t('AI 助手'),t('描述目标，AI 会调用工具完成整个流程。各业务页面可查看结果，也可手工操作。'),btn(t('Agent 中心'),"go('agent-center')",'small','agent')+btn(t('偏好设置'),"go('settings')",'small','settings'))+`
-    <section class="assistant-workspace" aria-label="${t('AI 对话')}">
-      <div class="assistant-toolbar"><div class="agent-picker" role="tablist" aria-label="${t('选择 Agent')}">${agents().map(x=>`<button class="agent-pick ${x.id===a?.id?'active':''}" role="tab" aria-selected="${x.id===a?.id}" title="${esc(t(x.description))}" onclick="chooseAgent('${x.id}')">${I(x.icon)}${esc(t(x.name))}</button>`).join('')}</div><div class="assistant-context"><span>${I('folder')}${esc(p?.name||t('工作空间对话'))}</span><span>${m?esc(m.name):t('未配置模型')}</span>${badge(t(ready?'可用':'待配置模型'),ready?'':'orange')}</div></div>
-      <div class="chat-log" role="log" aria-label="${t('对话记录')}" aria-live="polite">${messages.length?messages.map(msg=>`<article class="msg ${msg.role==='user'?'me':''}"><div class="message-label">${msg.role==='user'?t('你'):esc(t(a?.name||'Agent'))}<time>${date(msg.at)}</time></div><div class="message-body">${msg.role==='user'?esc(msg.content):messageMarkdown(msg.content)}</div>${trace(msg)}</article>`).join(''):`<div class="assistant-welcome"><span class="welcome-icon">${I('agent')}</span><h2>${t('从一个目标开始')}</h2><p>${esc(t(a?.description||''))}</p><p class="muted">${t('检索、复核、流程配置、运行与归档，都可以在这里推进。')}</p><div class="prompt-list">${agentPrompts.map((prompt,index)=>`<button onclick="usePrompt(${index})">${I(index===0?'flow':index===1?'activity':'folder')}<span>${t(prompt)}</span>${I('arrow')}</button>`).join('')}</div></div>`}${busy?`<div class="msg thinking" role="status">${I('agent')}${activeRun?.tool?t('正在执行 {tool}',{tool:esc(activeRun.tool)}):t('{a} 正在思考，可能会调用工具…',{a:esc(t(a?.name||'Agent'))})}</div>`:''}</div>
-      <div class="assistant-compose">${!ready?`<div class="setup-hint"><span>${t(models().length?'先在 Agent 中心右击角色配置可用模型':'先在偏好设置中添加模型')}</span>${btn(t('配置模型'),models().length?"go('agent-center')":"go('settings')",'small','settings')}</div>`:''}<div class="chat-box"><textarea id="agent-message" aria-label="${t('向 Agent 提问')}" placeholder="${t('告诉 AI 你的目标或需要修改的内容…')}" ${ready&&!blocked?'':'disabled'} oninput="setChatDraft(this.value)" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendAgent();}">${esc(chatDraft())}</textarea><div class="composer-footer"><span>${t('Enter 发送 · Shift + Enter 换行')}</span>${btn(t(busy?'执行中…':'发送'),'sendAgent()','primary','arrow',!ready||blocked)}</div></div><p class="compose-note">${t('执行记录保存在对话与工作进展中；缺少关键信息时，AI 会在这里询问。')}</p></div>
-    </section>`;
-}
 
 function agentCenterPage(){
   const helps=helpJobs(),events=db.events.slice(-100).reverse(),s=db.settings,readyCount=agents().filter(a=>meta.ready?.[a.id]).length,cur=currentAgent();
@@ -221,13 +214,13 @@ function modal(title,body,actions='',className=''){document.getElementById('moda
 function closeModal(){const aid=document.querySelector('.agent-modal form')?.id.slice('agent-form-'.length),modelForm=document.querySelector('.model-modal form'),mid=modelForm?.dataset.modelId;document.getElementById('modal-root').innerHTML='';if(aid)document.querySelector(`.roster-card[data-agent-id="${aid}"]`)?.focus({preventScroll:true});else if(modelForm)document.querySelector(mid?`.model-item[data-model-id="${mid}"]`:'.model-add')?.focus({preventScroll:true});}
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape')closeModal();
-  const dialog=document.querySelector('.agent-modal,.model-modal');
+  const dialog=document.querySelector('#modal-root .modal');
   if(e.key!=='Tab'||!dialog)return;
   const controls=dialog.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)'),first=controls[0],last=controls[controls.length-1];
   if(e.shiftKey&&(document.activeElement===first||!dialog.contains(document.activeElement))){e.preventDefault();last?.focus();}
   else if(!e.shiftKey&&(document.activeElement===last||!dialog.contains(document.activeElement))){e.preventDefault();first?.focus();}
 });
-document.addEventListener('input',e=>{const el=e.target;if(el.id&&el.id!=='agent-message'&&el.closest('main'))ui.dirty[el.id]=el.value;});
+document.addEventListener('input',e=>{const el=e.target;if(el.id&&!['agent-message','chat-history-search'].includes(el.id)&&el.closest('main'))ui.dirty[el.id]=el.value;});
 document.addEventListener('click',e=>{const a=e.target.closest('a[href^="http"]');if(!a)return;e.preventDefault();run(()=>request('openURL',{url:a.href}));});
 
 function newProject(){modal(t('新建数据库项目'),field(t('项目名称'),'new-name')+field(t('研究目标'),'new-desc','','textarea'),btn(t('创建项目'),'createProject()','primary','plus'));}
@@ -292,13 +285,8 @@ function resetAgent(aid){
 }
 function toggleAgent(){run(()=>act('settings',{settings:{...db.settings,paused:!db.settings.paused}},t(db.settings.paused?'巡检已恢复':'自动巡检已暂停')));}
 function tick(){run(()=>act('tick',{},'已发起一次巡检'));}
-function sendAgent(){
-  const message=val('agent-message'),a=currentAgent(),projectId=ui.projectId||'',key=conversationKey();
-  if(!message||!a||ui.sending||ui.busy.has('message')||(meta.agentRuns||[]).some(r=>r.projectId===projectId))return;
-  ui.sending={projectId,agentId:a.id};ui.chatDrafts[key]='';
-  run(async()=>{try{await act('message',{projectId,agentId:a.id,message},'');}catch(error){await refresh(true);const history=projectId?db.projects.find(p=>p.id===projectId)?.messages:db.messages;const lastUser=(history||[]).filter(m=>m.agent===a.id&&m.role==='user').at(-1);if(lastUser?.content!==message)ui.chatDrafts[key]=message;throw error;}finally{ui.sending=null;render();}});
-}
-function askAgent(aid,jid){const j=db.jobs.find(v=>v.id===jid);if(!j)return;ui.agentId=aid;ui.projectId=j.projectId;closeModal();setChatDraft(t('请诊断任务 {a}（id {i}）：读取其日志与服务器状态，判断失败原因并给出具体修复步骤。',{a:j.accession,i:j.id}));go('agent');sendAgent();}
+
+function askAgent(aid,jid){const j=db.jobs.find(v=>v.id===jid);if(!j)return;ui.agentId=aid;ui.projectId=j.projectId;syncChatState();closeModal();setChatDraft(t('请诊断任务 {a}（id {i}）：读取其日志与服务器状态，判断失败原因并给出具体修复步骤。',{a:j.accession,i:j.id}));go('agent');sendAgent();}
 function artifact(aid){run(async()=>{const a=db.artifacts.find(x=>x.id===aid),r=await request('artifact?id='+encodeURIComponent(aid));modal(a.name+' · '+t('预览'),`<p class="muted mono">${esc(a.path)}<br>SHA-256 ${esc(a.sha256)}</p><p class="muted">${t('最多预览前 64 KiB。')}</p>${code(r.text)}`);});}
 function exportManifest(){run(async()=>{const r=await request('exportManifest',{projectId:ui.projectId});toast(t('产物清单已导出到 {p}',{p:r.result}));});}
 

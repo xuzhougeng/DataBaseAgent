@@ -98,6 +98,8 @@ Everything runs on your machine. DBA writes workspace state to a single JSON fil
 
 Conversations live on the dedicated **AI assistant** page; the right panel retains work progress, monitoring and help requests. Other pages show the same state and support manual edits. Workspace chat can start before a project exists.
 
+Chats have independent, searchable histories with rename, pin, archive, and export actions. Continue sending while the agent works: each project processes its durable message queue in order, and waiting messages can be edited or removed. The execution timeline shows tool status, duration, arguments, and results. Stopping or failing pauses subsequent messages; restarting preserves the queue and marks interrupted requests for manual review. Drafts and the selected chat survive page reloads.
+
 Each agent runs a bounded loop: *model → tool calls → results → model*, up to a configurable step budget, after which a final answer is forced. Every tool invocation (arguments, result excerpt, latency, error flag) is stored with the reply and can be expanded in the chat. See [docs/agents.md](docs/agents.md).
 
 ## Model providers
@@ -157,7 +159,9 @@ The companion manuscript case follows a FAM167A knockdown from GEO screening thr
 ## Verification
 
 ```bash
-go test ./... && go vet ./... && node --check frontend/workbench.js
+go test ./... && go test -race ./internal/workbench && go vet ./...
+node --check frontend/workbench.js && node --check frontend/conversations.js
+node scripts/check-i18n.js && node --test scripts/test-conversations.js
 ```
 
 The suite exercises project isolation, the recorded-inclusion gate, immutable pipeline snapshots, cross-project server quotas, no-resubmission on lost acknowledgements, bounded recovery and hand-off, transfer recovery without re-execution, restart resumption, persistence rollback and corruption detection, discovery de-duplication and fetch limits, evidence verification, same-origin enforcement, agent tool scoping and tracing, all three model protocols, schema migration, conversation-driven workflows and retained traces after failures — using a controllable executor and a stubbed HTTP transport. Real servers and model endpoints still need to be validated with your own configuration.
