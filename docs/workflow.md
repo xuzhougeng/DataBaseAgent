@@ -34,7 +34,7 @@ Closing the app does not interrupt remote processes; reopening re-attaches to th
 
 ## Working with agents
 
-The right-hand panel always shows the active agent, recent events and help requests. Switch agents with the icon row; each one answers from the current project only and shows which tools it consulted. Configure models and agent instructions on **Preferences**. See [agents.md](agents.md) and [models.md](models.md).
+The right-hand panel always shows the active agent, recent events and help requests. Switch agents with the icon row; each one answers from the current project only and shows which tools it consulted. Add model profiles in **Preferences**. In **Agent center**, right-click a role card to edit its model, instructions and tool step limit in a dialog; a normal click selects the role for chat. See [agents.md](agents.md) and [models.md](models.md).
 
 ## Scope and non-goals
 

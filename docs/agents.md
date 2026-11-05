@@ -54,7 +54,7 @@ Agents have **no write tools**. Nothing an agent says changes state; the user ac
 | `pipeline` | Pipeline Advisor | flow | 6 | `get_project` `get_pipeline` `list_servers` `list_jobs` `get_job` | "Review step 2; am I using DBA_CPUS correctly?" |
 | `operator` | Operations Inspector | wrench | 8 | `list_jobs` `get_job` `list_servers` `recent_events` | "Diagnose job GSE12345." (one click from any help request) |
 
-Icons, names, descriptions and tool scopes are fixed in code (`presetAgents`). Instructions, model and step budget are editable in **Preferences → Agent** and can be reset to the preset.
+Icons, names, descriptions and tool scopes are fixed in code (`presetAgents`). Instructions, model and step budget are editable in **Agent center**: right-click a role card (or focus it and press Shift+F10) to open its editor. Click a card normally to chat with that role. The editor can restore the preset instructions and step budget.
 
 The Reviewer has a second, non-conversational mode: **batch review** on the review page sends up to 20 pending candidates one by one with a strict JSON output contract and no tools. Each suggestion must quote evidence that appears verbatim in the title or abstract; otherwise it is stored as `uncertain / low` with the reason "no verifiable evidence". The final include/exclude decision is always the user's.
 
