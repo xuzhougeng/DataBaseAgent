@@ -146,6 +146,9 @@ type Event struct {
 type Message struct {
 	Role    string  `json:"role"`
 	Agent   string  `json:"agent"`
+	Kind    string  `json:"kind,omitempty"` // delegation: a child task in the shared conversation
+	Task    string  `json:"task,omitempty"`
+	Error   bool    `json:"error,omitempty"`
 	Content string  `json:"content"`
 	Trace   []Trace `json:"trace,omitempty"`
 	At      string  `json:"at"`
@@ -153,11 +156,13 @@ type Message struct {
 
 // AgentRun is transient progress; persisted messages and events survive a restart.
 type AgentRun struct {
-	ProjectID string `json:"projectId"`
-	AgentID   string `json:"agentId"`
-	StartedAt string `json:"startedAt"`
-	Step      int    `json:"step"`
-	Tool      string `json:"tool"`
+	ProjectID  string `json:"projectId"`
+	AgentID    string `json:"agentId"`
+	StartedAt  string `json:"startedAt"`
+	Step       int    `json:"step"`
+	Tool       string `json:"tool"`
+	SubagentID string `json:"subagentId,omitempty"`
+	Task       string `json:"task,omitempty"`
 }
 
 // Trace records one tool invocation inside an agent loop step.

@@ -4,11 +4,15 @@ The **AI assistant** is a dedicated page and the default entry point. Describe a
 
 ## Conversations and progress
 
-Choose a project in the navigation selector, or **Workspace chat** to start before a project exists. Workspace conversations are stored in `State.Messages`; project conversations remain in `Project.Messages`. Project tools default to the conversation's project and accept an explicit `projectId`, which is required in workspace chat. The assistant must only use a different project when the user's request calls for it. Candidate and job IDs are checked against the selected tool project.
+Opening, selecting or creating a project takes you directly to its main conversation. Choose **Workspace chat** to start before a project exists. Workspace conversations are stored in `State.Messages`; project conversations remain in `Project.Messages`. Project tools default to the conversation's project and accept an explicit `projectId`, which is required in workspace chat. The assistant must only use a different project when the user's request calls for it. Candidate and job IDs are checked against the selected tool project.
 
-Each agent has its own history and draft input. The last eight messages for that agent are replayed; persisted conversation histories are capped at 200 messages per scope. Messages support basic Markdown, escaped code blocks and expandable tool traces. The input handles Chinese IME composition without sending an unfinished word.
+Each project has one conversation and one draft, led by the Project Assistant. All roles share this history; existing role-specific messages appear together in their original stored order, retaining their authors and traces. The last 16 shared messages are replayed; persisted conversation histories are capped at 200 messages per scope. Messages support basic Markdown, escaped code blocks and expandable tool traces. The input handles Chinese IME composition without sending an unfinished word.
 
-A user message is saved before model execution. `/api/state` exposes transient `agentRuns` with the agent, project, current step, tool and start time. Each completed call is also saved as an event. If a later model request fails, completed mutations remain committed and an interruption message retains the tool trace. Only one conversation runs at a time in each project or in the workspace conversation.
+Type `@` (or click **@ Subagent**) to choose a specialist. Use arrow keys to navigate and Enter/Tab to insert a mention. `@scout`, `@reviewer`, `@pipeline`, `@operator` and their Chinese role names are recognized. Multiple mentions run sequentially, once per named specialist, before the main agent summarizes and continues. Email addresses and mentions in code blocks/inline code do not dispatch agents. Unknown mentions report an error and keep the draft. Legacy API requests with a specialist `agentId` are treated as a mention in the shared conversation.
+
+The main agent can also call `delegate_agent` autonomously with an `agentId`, concrete `task` and optional `projectId`. Each child uses its own configured model, instructions, step budget and fixed tool permissions, with shared conversation context and fresh project state. Only the main agent can delegate; children cannot delegate recursively. A conversation turn allows up to eight delegations. Child results are returned as tool results and saved as expandable task cards (`Message.kind = delegation`) in the same conversation, with task, result, tool traces and failure status. Child failures preserve completed writes and let the main agent explain or recover. No separate child chat is created.
+
+A user message is saved before model execution. `/api/state` exposes transient `agentRuns` with the main agent, project, current step, tool and start time, plus `subagentId` and `task` while a child runs. Each completed call is also saved as an event. If a later model request fails, completed mutations remain committed and an interruption message retains the tool trace. Only one conversation runs at a time in each project or in the workspace conversation, including its child tasks.
 
 ## The loop
 
@@ -50,7 +54,7 @@ Tool schemas are validated locally, including required fields, types, enums, num
 | Pipeline Advisor | Pipeline editing/locking, server checks, job creation and output inspection |
 | Operations Inspector | Server registration/checks, monitoring settings, job inspection/recovery and manifests |
 
-Tools, icons and descriptions are fixed in code. In **Agent center**, right-click a role card (or focus it and press Shift+F10) to edit its model, instructions and step budget in a dialog, or restore its preset instructions and step budget. A normal click opens **AI assistant** with that role selected. Existing workspaces adopt the executable preset scopes; prompts and step budgets that exactly match the former defaults are upgraded. Custom instructions and model choices are preserved.
+Tools, icons and descriptions are fixed in code. In **Agent center**, click a role card to edit its model, instructions and step budget in a dialog, or restore its preset instructions and step budget. Right-click and Shift+F10 also open configuration. Cards identify the main agent and its subagents; they do not switch conversations. Existing workspaces adopt the executable preset scopes; prompts and step budgets that exactly match the former defaults are upgraded. Custom instructions and model choices are preserved.
 
 The separate **Agent review** button on the Review page still generates suggestions only, for up to 20 pending candidates. Its quote must appear verbatim in the title or abstract; otherwise the suggestion becomes `uncertain / low`. The conversational Reviewer can record decisions using `review_candidate`. Decisions require a reason and record `reviewedBy` as `user` or `agent:<id>`; legacy decisions without this field are shown as manual. Chat decisions are model judgments, not automatically verified evidence quotes.
 
@@ -58,6 +62,7 @@ The separate **Agent review** button on the Review page still generates suggesti
 
 | Tools | Behavior |
 | --- | --- |
+| `delegate_agent` | Main agent only: execute a specialist task using its own model and tools, persist the result in the shared conversation |
 | `list_projects`, `get_project` | Project IDs, goals, criteria, queries and stage counts |
 | `create_project`, `update_project` | Create a project or patch its editable fields |
 | `search`, `list_searches`, `import_candidates` | Execute real discovery, inspect history and import records with de-duplication |

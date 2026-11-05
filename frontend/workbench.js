@@ -6,7 +6,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 
 let db={projects:[],servers:[],jobs:[],artifacts:[],events:[],settings:{}};
 let meta={},lastState='',loading=false;
-const ui={page:'agent',projectId:null,filter:'pending',candidateId:'',jobFilter:'all',jobQuery:'',agentId:'',modelId:'',busy:new Set(),dirty:{},chatDrafts:{},asideHidden:(()=>{try{return localStorage.getItem('dba-aside')==='hidden'}catch{}})()};
+const ui={page:'agent',projectId:null,filter:'pending',candidateId:'',jobFilter:'all',jobQuery:'',modelId:'',busy:new Set(),dirty:{},chatDrafts:{},asideHidden:(()=>{try{return localStorage.getItem('dba-aside')==='hidden'}catch{}})()};
 const protocolNames={openai:'OpenAI Chat Completions 兼容',anthropic:'Anthropic Messages',gemini:'Google Gemini'};
 const protocolHints={openai:'例如 https://api.openai.com/v1；DeepSeek、Qwen、Ollama、vLLM、OpenRouter 等兼容服务同理，应用追加 /chat/completions',anthropic:'例如 https://api.anthropic.com/v1，应用追加 /messages；模型 ID 如 claude-opus-5-5',gemini:'例如 https://generativelanguage.googleapis.com/v1beta，应用追加 /models/{模型}:generateContent'};
 const labels={queued:'排队中',starting:'提交中',running:'运行中',retry_wait:'等待重试',syncing:'结果同步',succeeded:'已完成',needs_help:'需要协助',pending:'待确认',accepted:'已纳入',excluded:'已排除',include:'建议纳入',exclude:'建议排除',uncertain:'需要确认',online:'连接正常',unchecked:'待检查',error:'连接异常'};
@@ -15,7 +15,7 @@ const stageNames=['待定义主题','待检索','待复核','待定义流程','�
 const current=()=>db.projects.find(p=>p.id===ui.projectId);
 const agents=()=>db.settings.agents||[];
 const models=()=>db.settings.models||[];
-const currentAgent=()=>agents().find(a=>a.id===ui.agentId)||agents()[0];
+const currentAgent=()=>agents().find(a=>a.id==='assistant')||agents()[0];
 const agentModel=a=>models().find(m=>m.id===a.modelId)||models()[0];
 const projectMeta=p=>({projectId:p.id,name:p.name,description:p.description,organism:p.organism,assay:p.assay,criteria:p.criteria,query:p.query,source:p.source});
 const projectJobs=(pid=ui.projectId)=>db.jobs.filter(j=>j.projectId===pid);
@@ -62,11 +62,42 @@ async function act(action,body={},message=t('已保存')){
 }
 function run(fn){Promise.resolve().then(fn).catch(e=>toast(e.message||String(e)));}
 function go(page){ui.page=page;render();document.querySelector('main')?.scrollTo(0,0);}
-function selectProject(id){ui.projectId=id;ui.candidateId='';if(ui.page!=='agent')ui.page=id?'overview':'agent';render();}
-const conversationKey=()=>`${ui.projectId||''}|${currentAgent()?.id||'assistant'}`;
+function selectProject(id){ui.projectId=id;ui.candidateId='';ui.page='agent';render();}
+const conversationKey=()=>ui.projectId||'';
 const chatDraft=()=>ui.chatDrafts[conversationKey()]||'';
 function setChatDraft(value){ui.chatDrafts[conversationKey()]=value;}
-function chooseAgent(aid){ui.agentId=aid;render();}
+function mentionQuery(input){
+  const prefix=input.value.slice(0,input.selectionStart),match=prefix.match(/(?:^|[\s,，。;；:：、(（])@([\p{L}\p{N}_-]*)$/u);
+  return match?{start:prefix.lastIndexOf('@'),end:input.selectionStart,query:match[1].toLowerCase()}:null;
+}
+function closeMentions(){ui.mention=null;const menu=document.getElementById('agent-mentions');if(menu){menu.hidden=true;menu.innerHTML='';}const input=document.getElementById('agent-message');input?.setAttribute('aria-expanded','false');input?.removeAttribute('aria-activedescendant');}
+function updateMentions(input,keepSelection=false){
+  const query=mentionQuery(input),menu=document.getElementById('agent-mentions');
+  if(!query||!menu){closeMentions();return;}
+  const matches=agents().filter(a=>a.id!=='assistant'&&[a.id,a.name,t(a.name)].some(name=>name.toLowerCase().includes(query.query)));
+  if(!matches.length){closeMentions();return;}
+  const index=keepSelection?Math.min(ui.mention?.index||0,matches.length-1):0;
+  ui.mention={...query,matches,index};menu.hidden=false;input.setAttribute('aria-expanded','true');input.setAttribute('aria-activedescendant',`mention-${matches[index].id}`);
+  menu.innerHTML=`<div class="mention-heading">${t('调度子 Agent')}</div>${matches.map((a,i)=>`<button type="button" id="mention-${a.id}" role="option" aria-selected="${i===index}" class="mention-option ${i===index?'selected':''}" onmousedown="event.preventDefault()" onclick="insertAgentMention('${a.id}')"><span class="agent-icon">${I(a.icon)}</span><span><strong>${esc(t(a.name))} <code>@${a.id}</code></strong><small>${esc(t(a.description))}</small></span>${!meta.ready?.[a.id]?badge(t('待配置模型'),'orange'):''}</button>`).join('')}`;
+}
+function insertAgentMention(aid){
+  const input=document.getElementById('agent-message');if(!input||input.disabled)return;
+  const query=mentionQuery(input),start=query?.start??input.selectionStart,end=query?.end??input.selectionEnd,prefix=start&&!/\s$/.test(input.value.slice(0,start))&&!query?' ':'';
+  input.setRangeText(`${prefix}@${aid} `,start,end,'end');setChatDraft(input.value);closeMentions();input.focus();
+}
+function openAgentMentions(){
+  const input=document.getElementById('agent-message');if(!input||input.disabled)return;
+  input.focus();if(!mentionQuery(input)){const start=input.selectionStart,prefix=start&&!/\s$/.test(input.value.slice(0,start))?' ':'';input.setRangeText(prefix+'@',start,input.selectionEnd,'end');setChatDraft(input.value);}updateMentions(input);
+}
+function chatKeydown(event){
+  if(event.isComposing)return;
+  if(ui.mention&&['ArrowDown','ArrowUp','Tab','Enter','Escape'].includes(event.key)&&!event.shiftKey){
+    event.preventDefault();if(event.key==='Escape'){closeMentions();return;}
+    if(['Tab','Enter'].includes(event.key)){insertAgentMention(ui.mention.matches[ui.mention.index].id);return;}
+    ui.mention.index=(ui.mention.index+(event.key==='ArrowDown'?1:-1)+ui.mention.matches.length)%ui.mention.matches.length;updateMentions(event.target,true);return;
+  }
+  if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAgent();}
+}
 function usePrompt(index){setChatDraft(t(agentPrompts[index]));render();document.getElementById('agent-message')?.focus();}
 const agentPrompts=['根据项目目标，完成检索、复核、流程配置并创建处理任务。','检查当前进展，找出阻塞环节并处理可以解决的问题。','查看已完成任务和产物，汇总数据来源与处理结果。'];
 function stage(p){if(projectJobs(p.id).some(j=>j.status==='succeeded'))return 5;if(projectJobs(p.id).length||p.draft.locked)return 4;if(p.candidates.some(c=>c.decision==='accepted'))return 3;if(p.candidates.length)return 2;if(p.criteria&&p.query)return 1;return 0;}
@@ -78,12 +109,15 @@ function render(){
   const body=(pages[ui.page]||allProjects)();// reviewPage may move ui.candidateId, so build it before comparing views
   // ponytail: the whole app is re-rendered from state (polling every 3 s); when the view is unchanged, carry over
   // scroll positions and unsaved field edits so background refreshes neither jump to the top nor wipe input.
-  const view=ui.page+'|'+ui.projectId,form=view+'|'+(ui.page==='review'?ui.candidateId:''),chatKey=ui.projectId+'|'+currentAgent()?.id;
+  const view=ui.page+'|'+ui.projectId,form=view+'|'+(ui.page==='review'?ui.candidateId:''),chatKey=ui.projectId;
   const scrolls=view===ui.view?['.sidebar','.candidate-list','.aside-feed',...(form===ui.form?['main']:[])].map(s=>[s,document.querySelector(s)?.scrollTop]):[];
+  const openDetails=chatKey===ui.chatKey?[...document.querySelectorAll('[data-chat-detail][open]')].map(el=>el.dataset.chatDetail):[];
   const log=document.querySelector('.chat-log'),logEnd=!log||chatKey!==ui.chatKey||log.scrollHeight-log.scrollTop-log.clientHeight<24,logTop=log?.scrollTop;
   if(form!==ui.form)ui.dirty={};
   Object.assign(ui,{view,form,chatKey});
   document.getElementById('app').innerHTML=`<div class="app ${ui.asideHidden?'aside-hidden':''}">${sidebar(p)}<main class="${ui.page==='agent'?'assistant-main':''}">${body}</main>${aside(p)}</div>`;
+  ui.mention=null;
+  for(const el of document.querySelectorAll('[data-chat-detail]'))if(openDetails.includes(el.dataset.chatDetail))el.open=true;
   for(const [id,v] of Object.entries(ui.dirty)){const el=document.getElementById(id);if(el)el.value=v;}
   for(const [s,top] of scrolls){const el=document.querySelector(s);if(el&&top)el.scrollTop=top;}
   const chat=document.querySelector('.chat-log');if(chat)chat.scrollTop=logEnd?chat.scrollHeight:logTop;
@@ -115,7 +149,7 @@ function aside(p){
   if(ui.asideHidden)return `<aside class="aside rail"><button class="icon-button" onclick="toggleAside()" aria-label="${t('展开工作进展')}" title="${t('展开工作进展')}">${I('activity')}</button>${helps.length?`<span class="count warn">${helps.length}</span>`:''}</aside>`;
   return `<aside class="aside" aria-label="${t('AI 工作进展')}"><div class="aside-head">${I('activity')}<div><strong>${t('工作进展')}</strong><small>${paused?t('巡检已暂停，远端进程继续运行'):t('每 {n} 秒巡检 · {m} 个活跃任务',{n:db.settings.intervalSeconds,m:db.jobs.filter(active).length})}</small></div><button class="icon-button" onclick="toggleAside()" aria-label="${t('收起工作进展')}" title="${t('收起工作进展')}">${I('chevron')}</button></div>
     <div class="progress-controls">${btn(t('立即巡检'),'tick()','small','sync')}${btn(t(paused?'恢复巡检':'暂停巡检'),'toggleAgent()','small',paused?'play':'pause')}</div>
-    <div class="aside-feed">${runs.map(r=>`<div class="run-progress" role="status"><strong>${I('agent')}${esc(agents().find(a=>a.id===r.agentId)?.name||'Agent')}</strong><p>${r.tool?t('正在执行 {tool}',{tool:esc(r.tool)}):t('正在规划下一步…')}</p><small>${t('第 {n} 步',{n:r.step||1})} · ${date(r.startedAt)}</small></div>`).join('')}
+    <div class="aside-feed">${runs.map(r=>`<div class="run-progress" role="status"><strong>${I('agent')}${esc(agents().find(a=>a.id===(r.subagentId||r.agentId))?.name||'Agent')}</strong><p>${r.tool?t('正在执行 {tool}',{tool:esc(r.tool)}):t('正在规划下一步…')}</p><small>${t('第 {n} 步',{n:r.step||1})} · ${date(r.startedAt)}</small></div>`).join('')}
     ${helps.map(j=>`<div class="help-card"><strong>${I('alert')}${t('{a} 需要你的判断',{a:esc(j.accession)})}</strong><p>${esc(j.help||j.error)}</p><div class="decision">${btn(t('查看并处理'),`jobDetail('${j.id}')`,'small')}${btn(t('交给 AI 排查'),`askAgent('operator','${j.id}')`,'small','agent',!meta.ready?.operator)}</div></div>`).join('')}
     <div class="aside-label"><span>${t('最近动态')}</span><span>${t('上次巡检')} ${date(db.lastTick,t('尚未巡检'))}</span></div>${events.length?events.map(e=>`<div class="event ${e.kind==='help'?'warn':e.kind==='error'?'err':''}"><time>${date(e.at)}</time><strong>${esc(e.title)}</strong>${e.detail?`<p>${esc(e.detail)}</p>`:''}${e.jobId?`<button class="text-button" onclick="jobDetail('${e.jobId}')">${t('查看任务')}</button>`:''}</div>`).join(''):`<p class="muted">${t('项目动态会显示在这里。')}</p>`}</div>
     ${ui.page!=='agent'?btn(t('打开 AI 助手'),"go('agent')",'small','agent'):''}</aside>`;
@@ -187,19 +221,24 @@ function messageMarkdown(content){
     }).join('');
   }).join('');
 }
+function chatMessage(msg,index){
+  const a=agents().find(a=>a.id===msg.agent);
+  if(msg.kind==='delegation')return `<article class="msg delegation-card ${msg.error?'failed':''}"><details data-chat-detail="task-${index}"><summary><span class="delegation-heading">${I(a?.icon||'agent')}<strong>${esc(t(a?.name||msg.agent))}</strong>${badge(t(msg.error?'执行中断':'子任务完成'),msg.error?'orange':'')}<time>${date(msg.at)}</time></span><span class="delegation-task">${esc(msg.task)}</span></summary><div class="delegation-result message-body">${messageMarkdown(msg.content)}</div>${trace(msg)}</details></article>`;
+  return `<article class="msg ${msg.role==='user'?'me':''}"><div class="message-label">${msg.role==='user'?t('你'):esc(t(a?.name||'项目助手'))}${msg.role==='assistant'&&msg.agent==='assistant'?badge(t('主 Agent'),'gray'):''}<time>${date(msg.at)}</time></div><div class="message-body">${msg.role==='user'?esc(msg.content):messageMarkdown(msg.content)}</div>${trace(msg)}</article>`;
+}
 function agentPage(){
-  const p=current(),a=currentAgent(),m=a&&agentModel(a),ready=a&&meta.ready?.[a.id],messages=(p?.messages||db.messages||[]).filter(msg=>msg.agent===a?.id),activeRun=(meta.agentRuns||[]).find(r=>r.projectId===(ui.projectId||'')),sending=ui.sending?.projectId===(ui.projectId||'')&&ui.sending?.agentId===a?.id,busy=sending||activeRun?.agentId===a?.id,blocked=!!activeRun||ui.busy.has('message');
-  return head(t('AI 助手'),t('描述目标，AI 会调用工具完成整个流程。各业务页面可查看结果，也可手工操作。'),btn(t('Agent 中心'),"go('agent-center')",'small','agent')+btn(t('偏好设置'),"go('settings')",'small','settings'))+`
+  const p=current(),a=currentAgent(),m=a&&agentModel(a),ready=a&&meta.ready?.[a.id],messages=p?.messages||db.messages||[],activeRun=(meta.agentRuns||[]).find(r=>r.projectId===(ui.projectId||'')),sending=ui.sending?.projectId===(ui.projectId||''),busy=sending||!!activeRun,blocked=!!activeRun||ui.busy.has('message'),worker=agents().find(a=>a.id===activeRun?.subagentId)||a;
+  return head(p?.name||t('AI 助手'),t('一个项目，一条主对话。输入 @ 调度子 Agent，主 Agent 也会按需分工。'),btn(t('Agent 中心'),"go('agent-center')",'small','agent')+btn(t('偏好设置'),"go('settings')",'small','settings'))+`
     <section class="assistant-workspace" aria-label="${t('AI 对话')}">
-      <div class="assistant-toolbar"><div class="agent-picker" role="tablist" aria-label="${t('选择 Agent')}">${agents().map(x=>`<button class="agent-pick ${x.id===a?.id?'active':''}" role="tab" aria-selected="${x.id===a?.id}" title="${esc(t(x.description))}" onclick="chooseAgent('${x.id}')">${I(x.icon)}${esc(t(x.name))}</button>`).join('')}</div><div class="assistant-context"><span>${I('folder')}${esc(p?.name||t('工作空间对话'))}</span><span>${m?esc(m.name):t('未配置模型')}</span>${badge(t(ready?'可用':'待配置模型'),ready?'':'orange')}</div></div>
-      <div class="chat-log" role="log" aria-label="${t('对话记录')}" aria-live="polite">${messages.length?messages.map(msg=>`<article class="msg ${msg.role==='user'?'me':''}"><div class="message-label">${msg.role==='user'?t('你'):esc(t(a?.name||'Agent'))}<time>${date(msg.at)}</time></div><div class="message-body">${msg.role==='user'?esc(msg.content):messageMarkdown(msg.content)}</div>${trace(msg)}</article>`).join(''):`<div class="assistant-welcome"><span class="welcome-icon">${I('agent')}</span><h2>${t('从一个目标开始')}</h2><p>${esc(t(a?.description||''))}</p><p class="muted">${t('检索、复核、流程配置、运行与归档，都可以在这里推进。')}</p><div class="prompt-list">${agentPrompts.map((prompt,index)=>`<button onclick="usePrompt(${index})">${I(index===0?'flow':index===1?'activity':'folder')}<span>${t(prompt)}</span>${I('arrow')}</button>`).join('')}</div></div>`}${busy?`<div class="msg thinking" role="status">${I('agent')}${activeRun?.tool?t('正在执行 {tool}',{tool:esc(activeRun.tool)}):t('{a} 正在思考，可能会调用工具…',{a:esc(t(a?.name||'Agent'))})}</div>`:''}</div>
-      <div class="assistant-compose">${!ready?`<div class="setup-hint"><span>${t(models().length?'先在 Agent 中心右击角色配置可用模型':'先在偏好设置中添加模型')}</span>${btn(t('配置模型'),models().length?"go('agent-center')":"go('settings')",'small','settings')}</div>`:''}<div class="chat-box"><textarea id="agent-message" aria-label="${t('向 Agent 提问')}" placeholder="${t('告诉 AI 你的目标或需要修改的内容…')}" ${ready&&!blocked?'':'disabled'} oninput="setChatDraft(this.value)" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendAgent();}">${esc(chatDraft())}</textarea><div class="composer-footer"><span>${t('Enter 发送 · Shift + Enter 换行')}</span>${btn(t(busy?'执行中…':'发送'),'sendAgent()','primary','arrow',!ready||blocked)}</div></div><p class="compose-note">${t('执行记录保存在对话与工作进展中；缺少关键信息时，AI 会在这里询问。')}</p></div>
+      <div class="assistant-toolbar"><div class="conversation-title"><span class="agent-icon">${I('agent')}</span><div><strong>${t(p?'项目主对话':'工作空间对话')}</strong><small>${t('主 Agent 统筹 · 子 Agent 按需协作')}</small></div></div><div class="assistant-context"><span>${I('folder')}${esc(p?.name||t('工作空间对话'))}</span><span>${m?esc(m.name):t('未配置模型')}</span>${badge(t(ready?'可用':'待配置模型'),ready?'':'orange')}</div></div>
+      <div class="chat-log" role="log" aria-label="${t('对话记录')}" aria-live="polite">${messages.length?messages.map(chatMessage).join(''):`<div class="assistant-welcome"><span class="welcome-icon">${I('agent')}</span><h2>${t('从一个目标开始')}</h2><p>${t('主 Agent 持续跟进项目，协调检索、复核、流程和运维。')}</p><p class="muted">${t('直接描述目标，或输入 @ 选择一位子 Agent 参与。')}</p><div class="prompt-list">${agentPrompts.map((prompt,index)=>`<button onclick="usePrompt(${index})">${I(index===0?'flow':index===1?'activity':'folder')}<span>${t(prompt)}</span>${I('arrow')}</button>`).join('')}</div></div>`}${busy?`<div class="msg thinking" role="status">${I(worker?.icon||'agent')}<span>${activeRun?.subagentId?t('主 Agent 已委派 {a}',{a:esc(t(worker?.name||'Agent'))})+' · ':''}${activeRun?.tool?t('正在执行 {tool}',{tool:esc(activeRun.tool)}):t('{a} 正在思考，可能会调用工具…',{a:esc(t(worker?.name||'项目助手'))})}${activeRun?.task?`<small>${esc(activeRun.task)}</small>`:''}</span></div>`:''}</div>
+      <div class="assistant-compose">${!ready?`<div class="setup-hint"><span>${t(models().length?'先为主 Agent 配置可用模型':'先在偏好设置中添加模型')}</span>${btn(t('配置模型'),models().length?"agentModal('assistant')":"go('settings')",'small','settings')}</div>`:''}<div class="chat-box"><div id="agent-mentions" class="mention-menu" role="listbox" aria-label="${t('调度子 Agent')}" hidden></div><textarea id="agent-message" aria-label="${t('向 Agent 提问')}" aria-controls="agent-mentions" aria-expanded="false" aria-autocomplete="list" placeholder="${t('描述项目目标，输入 @ 调度子 Agent…')}" ${ready&&!blocked?'':'disabled'} oninput="setChatDraft(this.value);updateMentions(this)" onclick="updateMentions(this)" onkeydown="chatKeydown(event)" onkeyup="if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key))updateMentions(this)" onblur="closeMentions()">${esc(chatDraft())}</textarea><div class="composer-footer"><button class="mention-trigger" onclick="openAgentMentions()" ${!ready||blocked?'disabled':''}>@ <span>${t('子 Agent')}</span></button><span>${t('Enter 发送 · Shift + Enter 换行')}</span>${btn(t(busy?'执行中…':'发送'),'sendAgent()','primary','arrow',!ready||blocked)}</div></div><p class="compose-note">${t('子任务与结果保留在这条对话中，由主 Agent 汇总并继续推进。')}</p></div>
     </section>`;
 }
 
 function agentCenterPage(){
   const helps=helpJobs(),events=db.events.slice(-100).reverse(),s=db.settings,readyCount=agents().filter(a=>meta.ready?.[a.id]).length,cur=currentAgent();
-  return head(t('Agent 中心'),s.paused?t('自动巡检已暂停，远端进程继续运行。'):t('每 {i} 秒巡检远端任务，可恢复错误最多重试 {r} 次；{c}/{n} 个 Agent 已配置模型。',{i:s.intervalSeconds,r:s.maxRetries,c:readyCount,n:agents().length}),btn(t(s.paused?'恢复巡检':'暂停巡检'),'toggleAgent()',s.paused?'primary':'',s.paused?'play':'pause')+btn(t('偏好设置'),"go('settings')",'','settings'))+`<section class="card"><div class="card-head"><h2>${t('Agent 角色')}</h2><small>${t('左键进入 AI 助手对话，右键编辑配置')}</small></div><div class="roster">${agents().map(a=>{const m=agentModel(a);return `<button class="roster-card ${a.id===cur?.id?'active':''}" data-agent-id="${a.id}" title="${t('右击或按 Shift+F10 编辑 Agent')}" onclick="ui.agentId='${a.id}';go('agent')" oncontextmenu="event.preventDefault();agentModal('${a.id}')" onkeydown="if(event.key==='ContextMenu'||event.shiftKey&&event.key==='F10'){event.preventDefault();agentModal('${a.id}')}"><span class="agent-icon">${I(a.icon)}</span><strong>${esc(t(a.name))}</strong><small>${esc(t(a.description))}</small><span class="muted mono">${m?esc(m.name):t('未配置模型')}</span>${badge(t(meta.ready?.[a.id]?'可用':'待配置模型'),meta.ready?.[a.id]?'':'orange')}</button>`;}).join('')}</div></section>
+  return head(t('Agent 中心'),s.paused?t('自动巡检已暂停，远端进程继续运行。'):t('每 {i} 秒巡检远端任务，可恢复错误最多重试 {r} 次；{c}/{n} 个 Agent 已配置模型。',{i:s.intervalSeconds,r:s.maxRetries,c:readyCount,n:agents().length}),btn(t(s.paused?'恢复巡检':'暂停巡检'),'toggleAgent()',s.paused?'primary':'',s.paused?'play':'pause')+btn(t('偏好设置'),"go('settings')",'','settings'))+`<section class="card"><div class="card-head"><h2>${t('Agent 角色')}</h2><small>${t('主 Agent 负责主对话；子 Agent 可通过 @ 或由主 Agent 调度。点击角色编辑配置。')}</small></div><div class="roster">${agents().map(a=>{const m=agentModel(a);return `<button class="roster-card ${a.id===cur?.id?'active':''}" data-agent-id="${a.id}" title="${t('编辑 Agent')}" onclick="agentModal('${a.id}')" oncontextmenu="event.preventDefault();agentModal('${a.id}')" onkeydown="if(event.key==='ContextMenu'||event.shiftKey&&event.key==='F10'){event.preventDefault();agentModal('${a.id}')}"><span class="agent-icon">${I(a.icon)}</span><strong>${esc(t(a.name))} ${badge(t(a.id==='assistant'?'主 Agent':'子 Agent'),'gray')}</strong><small>${esc(t(a.description))}</small><span class="muted mono">${m?esc(m.name):t('未配置模型')}</span>${badge(t(meta.ready?.[a.id]?'可用':'待配置模型'),meta.ready?.[a.id]?'':'orange')}</button>`;}).join('')}</div></section>
     <section class="card"><div class="card-head"><h2>${t('求助请求')}</h2>${badge(helps.length?t('{n} 项待处理',{n:helps.length}):t('无'),helps.length?'orange':'gray')}</div>${helps.length?helps.map(j=>`<div class="content-pad"><div class="server-title"><strong class="mono">${esc(j.accession)}</strong><span class="muted">${esc(db.projects.find(p=>p.id===j.projectId)?.name||'')}</span></div><p class="muted">${esc(j.help)}</p>${j.error?`<p class="muted">${esc(j.error)}</p>`:''}<div class="decision">${btn(t('查看证据与处理'),`jobDetail('${j.id}')`,'small','arrow')}${btn(t('让运维巡检员诊断'),`askAgent('operator','${j.id}')`,'small','wrench',!meta.ready?.operator)}</div></div>`).join(''):`<div class="content-pad muted">${t('目前没有需要协助的任务。')}</div>`}</section>
     <section class="card"><div class="card-head"><h2>${t('操作记录')}</h2><small>${t('最近 {n} 条',{n:events.length})}</small></div>${table(['时间','动作','依据与结果'].map(x=>t(x)),events.map(e=>`<tr><td>${date(e.at)}</td><td>${esc(e.title)}</td><td class="wrap">${esc(e.detail)}${e.jobId?` <button class="text-button" onclick="jobDetail('${e.jobId}')">${t('查看任务')}</button>`:''}</td></tr>`),t('等待第一条记录'))}</section>`;
 }
@@ -231,7 +270,7 @@ document.addEventListener('input',e=>{const el=e.target;if(el.id&&el.id!=='agent
 document.addEventListener('click',e=>{const a=e.target.closest('a[href^="http"]');if(!a)return;e.preventDefault();run(()=>request('openURL',{url:a.href}));});
 
 function newProject(){modal(t('新建数据库项目'),field(t('项目名称'),'new-name')+field(t('研究目标'),'new-desc','','textarea'),btn(t('创建项目'),'createProject()','primary','plus'));}
-function createProject(){run(async()=>{const name=val('new-name');if(!name)throw new Error(t('请输入项目名称'));await act('createProject',{name,description:val('new-desc')},'项目已创建');ui.projectId=db.projects.at(-1).id;closeModal();go('search');});}
+function createProject(){run(async()=>{const name=val('new-name');if(!name)throw new Error(t('请输入项目名称'));await act('createProject',{name,description:val('new-desc')},'项目已创建');ui.projectId=db.projects.at(-1).id;closeModal();go('agent');});}
 function scopeBody(){const p=current();return {...projectMeta(p),name:val('project-name')||p.name,description:val('topic'),organism:val('organism'),assay:val('assay'),criteria:val('criteria'),query:val('query'),source:val('source')};}
 function saveScope(){run(()=>act('saveProject',scopeBody(),'研究范围与检索策略已保存'));}
 function runSearch(){run(async()=>{const body=scopeBody(),limit=Number(val('search-limit'));if(!body.query)throw new Error(t('请填写检索表达式'));await act('saveProject',body,'');toast(t('正在检索，请等待来源服务返回…'));const r=(await act('search',{...body,limit},'')).result;modal(t('检索已完成'),code(t('来源：{s}\n命中总数：{t}\n本次获取：{f}\n合并后新增：{a}',{s:r.source,t:r.total,f:r.fetched,a:r.added}))+`<p class="muted">${t('达到获取上限时，请调整上限或补充检索式。结果尚未复核。')}</p>`,btn(t('开始复核'),"closeModal();go('review')",'primary','arrow'));});}
@@ -295,10 +334,10 @@ function tick(){run(()=>act('tick',{},'已发起一次巡检'));}
 function sendAgent(){
   const message=val('agent-message'),a=currentAgent(),projectId=ui.projectId||'',key=conversationKey();
   if(!message||!a||ui.sending||ui.busy.has('message')||(meta.agentRuns||[]).some(r=>r.projectId===projectId))return;
-  ui.sending={projectId,agentId:a.id};ui.chatDrafts[key]='';
-  run(async()=>{try{await act('message',{projectId,agentId:a.id,message},'');}catch(error){await refresh(true);const history=projectId?db.projects.find(p=>p.id===projectId)?.messages:db.messages;const lastUser=(history||[]).filter(m=>m.agent===a.id&&m.role==='user').at(-1);if(lastUser?.content!==message)ui.chatDrafts[key]=message;throw error;}finally{ui.sending=null;render();}});
+  ui.sending={projectId};ui.chatDrafts[key]='';closeMentions();
+  run(async()=>{try{await act('message',{projectId,agentId:a.id,message},'');}catch(error){await refresh(true);const history=projectId?db.projects.find(p=>p.id===projectId)?.messages:db.messages;const lastUser=(history||[]).filter(m=>m.role==='user').at(-1);if(lastUser?.content!==message)ui.chatDrafts[key]=message;throw error;}finally{ui.sending=null;render();}});
 }
-function askAgent(aid,jid){const j=db.jobs.find(v=>v.id===jid);if(!j)return;ui.agentId=aid;ui.projectId=j.projectId;closeModal();setChatDraft(t('请诊断任务 {a}（id {i}）：读取其日志与服务器状态，判断失败原因并给出具体修复步骤。',{a:j.accession,i:j.id}));go('agent');sendAgent();}
+function askAgent(aid,jid){const j=db.jobs.find(v=>v.id===jid);if(!j)return;ui.projectId=j.projectId;closeModal();setChatDraft('@'+aid+' '+t('请诊断任务 {a}（id {i}）：读取其日志与服务器状态，判断失败原因并给出具体修复步骤。',{a:j.accession,i:j.id}));go('agent');sendAgent();}
 function artifact(aid){run(async()=>{const a=db.artifacts.find(x=>x.id===aid),r=await request('artifact?id='+encodeURIComponent(aid));modal(a.name+' · '+t('预览'),`<p class="muted mono">${esc(a.path)}<br>SHA-256 ${esc(a.sha256)}</p><p class="muted">${t('最多预览前 64 KiB。')}</p>${code(r.text)}`);});}
 function exportManifest(){run(async()=>{const r=await request('exportManifest',{projectId:ui.projectId});toast(t('产物清单已导出到 {p}',{p:r.result}));});}
 

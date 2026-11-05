@@ -96,7 +96,9 @@ Everything runs on your machine. DBA writes workspace state to a single JSON fil
 | Pipeline Advisor | 🔀 | Configures, locks and launches pipelines | project, pipeline, servers, jobs |
 | Operations Inspector | 🔧 | Checks servers, configures monitoring and resumes resolved jobs | jobs, servers, settings, events, outputs |
 
-Conversations live on the dedicated **AI assistant** page; the right panel retains work progress, monitoring and help requests. Other pages show the same state and support manual edits. Workspace chat can start before a project exists.
+Each project has one conversation on the **AI assistant** page, led by the Project Assistant. Type `@` or click **@ Subagent** to mention `@scout`, `@reviewer`, `@pipeline` or `@operator`; the main agent can also delegate autonomously. Specialists use their own models and scoped tools. Their results and traces stay in expandable task cards in the shared conversation, and the main agent summarizes and continues. Multiple mentions run sequentially, with at most eight child tasks per turn and no recursive delegation. Existing role histories appear together without data migration. Click role cards in **Agent center** to configure them.
+
+The right panel retains work progress, monitoring and help requests. Other pages show the same state and support manual edits. Workspace chat can start before a project exists.
 
 Each agent runs a bounded loop: *model → tool calls → results → model*, up to a configurable step budget, after which a final answer is forced. Every tool invocation (arguments, result excerpt, latency, error flag) is stored with the reply and can be expanded in the chat. See [docs/agents.md](docs/agents.md).
 
