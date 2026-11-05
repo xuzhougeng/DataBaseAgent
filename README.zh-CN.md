@@ -4,6 +4,8 @@
 
 基于 **Wails v3.1.0 + Go + 原生 HTML/CSS/JavaScript** 的本地主题数据库构建工作台。十个页面沿用提供的设计包：所有项目、项目概览、主题与检索、数据复核、处理流程、运行任务、服务器资源、数据与产物、Agent 中心、偏好设置。
 
+<p align="center"><img src="assets/DBA-overview.jpg" width="960" alt="DBA 英文项目概览，展示 GPSAdb 2.0 的 SK-N-SH 扰动数据归档"></p>
+
 ## 运行与构建
 
 从源码构建需要 Go 1.26+；前端没有 npm 依赖，静态资源直接嵌入可执行文件。远程执行在任何平台都需要系统 `ssh` 客户端（Windows 为内置 OpenSSH）。
@@ -64,22 +66,11 @@ go run ./cmd/dba-server -port 3415 -workspace .tmp/dev-workspace
 
 ## 使用路径：以 GPSAdb 为例
 
-GPSAdb（基因扰动单细胞图谱，Genetic Perturbation Single-cell Atlas）收集拟南芥与水稻在基因扰动（突变体、过表达、CRISPR）后的单细胞转录组数据，用于构建扰动响应图谱数据库。用 DBA 构建它的过程如下：
+GPSAdb 2.0 收录人类细胞系的单基因扰动 RNA-seq 数据。`2026.10.22` 发布版包含 7,665 个数据集、42,235 个样本，覆盖 2,810 个被扰动的基因。 [GPSAdb 2.0 论文](https://doi.org/10.1093/nar/gkaf1077) · [数据发布记录](https://doi.org/10.5281/zenodo.23585244)
 
-1. **定义主题。** 新建项目 `GPSAdb`，填写：
-   - 研究对象：`Arabidopsis thaliana; Oryza sativa`；数据类型：`scRNA-seq`
-   - 纳入标准：① 含基因扰动处理组与对照组；② 公开原始数据（GEO/SRA/ENA）；③ 单细胞或单核转录组。
-   - 偏宽的检索表达式：
-     ```
-     (Arabidopsis OR rice) AND (single-cell RNA-seq OR scRNA-seq) AND (mutant OR overexpression OR CRISPR)
-     ```
-2. **检索。** 先查 Europe PMC，再查 GEO，也可导入候选 JSON。每次记录命中总数与实际获取数（上限 1000），结果合并去重。GEO 结果可能包含 series、sample 或 platform，需要人工筛选。
-3. **复核。** 在偏好设置中添加模型后，让复核员给出建议并附原文证据，再逐条人工确认并填写理由。例如：生长素相关突变体背景下的拟南芥根单细胞图谱，纳入；干旱处理的叶片 bulk RNA-seq，排除（不是单细胞）；玉米 snRNA-seq，排除（物种不符）。纳入的数据补充来源编号、直接下载地址和样本分组（每行 `样本编号, 分组`，如 `GSM0001, 野生型`、`GSM0002, 突变体`）。
-4. **添加服务器。** 添加 Linux SSH 服务器，先在终端验证免密登录与主机指纹，再在应用中检查连接。填写专用的远程绝对工作目录和 CPU/并发配额。
-5. **锁定流程。** 保留默认的 `curl` 断点续传下载步骤，加入自定义处理步骤（如比对与计数），声明产物 `expression_matrix.tsv`、`qc_report.html`，锁定 v1 后把纳入的数据加入队列。
-6. **巡检与归档。** Agent 定期检查进程和退出码，按配额调度，网络类错误有限重试；其他命令错误、状态不明或连续失败转为求助，在 Agent 中心处理。结果按清单增量同步到 `projects/<id>/results/`，逐文件 SHA-256 校验后归档，「导出产物清单」即得到 GPSAdb 的溯源记录。
+首页英文截图展示了该发布版中 SK-N-SH 细胞的三组扰动对比。DBA 用锁定的流程核对样本分组与计数列，再归档每组对比的计数矩阵、分组表和样本汇总。 [PLLP](https://gpsadb.gzdlab.com/dataset/D25938) · [SUV39H1](https://gpsadb.gzdlab.com/dataset/D26999) · [TSPYL5](https://gpsadb.gzdlab.com/dataset/D27545)
 
-流程命令可以使用 `DBA_ACCESSION`、`DBA_SOURCE_URL`、`DBA_INPUT`、`DBA_OUTPUT`、`DBA_SAMPLE_GROUPS` 和 `DBA_CPUS`。步骤在 `$DBA_OUTPUT` 内顺序运行，错误即停止。输出路径为相对路径，例如 `expression_matrix.tsv`、`qc/report.html`。应用另生成 `run_manifest.json`。
+手稿案例另以 FAM167A 敲低为例，展示如何从 GEO 筛选候选、处理分组求助并校验归档。 [复现步骤](docs/manuscript/gpsadb-case/README.md) · [DBA 工作流指南](docs/workflow.md)
 
 ## Agent 与模型
 

@@ -28,7 +28,7 @@ DBA turns a research question into a reproducible dataset. You define the topic 
 
 Everything runs on your machine. State is a single atomically-written JSON file; credentials never touch disk; the LLM only ever reads project data through scoped tools and never executes anything.
 
-<p align="center"><img src="outputs/DBA-overview.jpg" width="820" alt="DBA workbench overview"></p>
+<p align="center"><img src="assets/DBA-overview.jpg" width="960" alt="DBA project overview in English for the GPSAdb 2.0 SK-N-SH perturbation dataset archive"></p>
 
 ## Design principles
 
@@ -132,24 +132,13 @@ Windows:
 
 Installers, cross-compilation and workspace locations are covered in [docs/build.md](docs/build.md).
 
-**Example: updating GPSAdb**
+### GPSAdb example
 
-GPSAdb (https://www.gpsadb.com; Guo et al., *Nucleic Acids Res.* 2023, 51:D964) collects human cell-line RNA-seq datasets in which one gene was knocked out or down by siRNA, shRNA, CRISPR/Cas9 or CRISPRi: 3,048 datasets for 1,458 genes in its published version, found by searching GEO and ENCODE with knockdown and knockout terms, screened by hand, and reprocessed into differential-expression tables and up/down gene sets. Keeping it current means repeating that cycle for every new GEO release. Here is how one update cycle goes through DBA:
+GPSAdb 2.0 curates human cell-line RNA-seq datasets for single-gene perturbations. The `2026.10.22` data release contains 7,665 datasets and 42,235 samples covering 2,810 perturbed genes. [GPSAdb 2.0 paper](https://doi.org/10.1093/nar/gkaf1077) · [Versioned data release](https://doi.org/10.5281/zenodo.23585244)
 
-1. **Define the topic.** Create a project named `GPSAdb update`, with:
-   - Organism: `Homo sapiens` · Assay: `RNA-seq`
-   - Inclusion criteria: (1) a human cell line; (2) one gene knocked out or down by siRNA, shRNA, CRISPR/Cas9 or CRISPRi, with a matched control; (3) raw reads or counts public on GEO/SRA. Exclude overexpression-only, drug-treatment-only, primary-tissue and single-cell datasets.
-   - A deliberately broad query, restricted to series released after the last update:
-     ```
-     (knockdown OR knockout OR shRNA OR siRNA OR CRISPR) AND "Homo sapiens"[Organism] AND gse[Entry Type] AND 2022/08/26:2030/12/31[PDAT]
-     ```
-2. **Search.** Run it against GEO. A plain-language form of the same terms can be run against Europe PMC to catch papers whose GEO series lack them. Hits are merged and de-duplicated, and each run records total hits vs. fetched.
-3. **Review.** Let the Reviewer propose decisions, then confirm each one with a reason. A CRISPR knockout of a transcription factor in HepG2 with wild-type controls is included; an overexpression-only series is excluded; a knockdown in primary T cells is excluded (not a cell line). For included records, fill in the accession and `sample, group` lines (e.g. `GSM0000001, control`, `GSM0000002, perturbed`), and note the perturbed gene in the review note.
-4. **Register a server.** Add a Linux host with key-based SSH and run the connection check.
-5. **Lock the pipeline.** Wrap GPSAdb's existing commands in three steps: fetch the runs (`pysradb` and `prefetch`), quantify, and run the differential-expression script over `$DBA_SAMPLE_GROUPS`. Declare `expression_matrix.tsv`, `differential_expression.tsv` and `qc_report.html` as outputs, lock v1 and queue jobs for the included datasets.
-6. **Supervise and archive.** The scheduler runs jobs within quota and retries transient network failures. Anything else becomes a help request that you resolve in the Agent center. Outputs land in `projects/<id>/results/` with SHA-256 checksums, and **Export manifest** gives the provenance record to load into GPSAdb.
+The screenshot shows a DBA project archiving three SK-N-SH contrasts from that release. A locked pipeline checks the published sample assignments against the count columns and archives the count matrix, sample sheet and per-sample summaries for each contrast. [PLLP](https://gpsadb.gzdlab.com/dataset/D25938) · [SUV39H1](https://gpsadb.gzdlab.com/dataset/D26999) · [TSPYL5](https://gpsadb.gzdlab.com/dataset/D27545)
 
-Full walkthrough: [docs/workflow.md](docs/workflow.md).
+The companion manuscript case follows a FAM167A knockdown from GEO screening through a help request, human-confirmed sample groups and checksum-verified archiving. [Reproduce the case](docs/manuscript/gpsadb-case/README.md) · [DBA workflow guide](docs/workflow.md)
 
 ## Documentation
 
@@ -182,6 +171,7 @@ main.go                 Wails desktop entry point (single-instance, workspace fl
 cmd/dba-server/         Browser preview server bound to 127.0.0.1
 internal/workbench/     Core: store · service · loop · discovery · agent · llm · ssh · http
 frontend/               Embedded UI: index.html · styles.css · workbench.js
+assets/                 README screenshots
 scripts/                build.sh · build.ps1 · installer.nsi
 docs/                   Topic documentation
 design/                 Original design package with checksums
