@@ -25,8 +25,9 @@ try {
         $goVersion = go env GOVERSION
         if ($LASTEXITCODE -ne 0) { throw 'Could not determine Go version' }
         $macosTarget = if ($goVersion -match '^go1\.26(\.|$)') { '12.0' } else { '13.0' }
-        New-Item -ItemType Directory -Path "$app/MacOS" -Force | Out-Null
+        New-Item -ItemType Directory -Path "$app/MacOS", "$app/Resources" -Force | Out-Null
         Build 'darwin' 'arm64' "$app/MacOS/DBA"
+        Copy-Item -Path 'assets/dba-icon.icns' -Destination "$app/Resources/"
         Set-Content -NoNewline -Encoding utf8 -Path "$app/Info.plist" -Value @"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -34,6 +35,7 @@ try {
   <key>CFBundleName</key><string>DBA</string>
   <key>CFBundleDisplayName</key><string>DBA</string>
   <key>CFBundleExecutable</key><string>DBA</string>
+  <key>CFBundleIconFile</key><string>dba-icon.icns</string>
   <key>CFBundleIdentifier</key><string>org.databaseagent.dba</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>

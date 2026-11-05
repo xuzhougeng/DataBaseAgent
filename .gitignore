@@ -3,6 +3,7 @@
 /workspace/
 *.exe
 *.syso
+!/dba_windows_*.syso
 *.log
 node_modules/
 .tmp/

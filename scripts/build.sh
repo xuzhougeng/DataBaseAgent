@@ -29,8 +29,9 @@ build() { # build <os> <arch> <输出路径>
 
 mac_app() { # 组装最小 .app 包
   local app=bin/DBA.app/Contents
-  mkdir -p "$app/MacOS"
+  mkdir -p "$app/MacOS" "$app/Resources"
   build darwin "${GOARCH:-$( [ "$host" = darwin ] && go env GOARCH || echo arm64 )}" "$app/MacOS/DBA"
+  cp assets/dba-icon.icns "$app/Resources/"
   cat > "$app/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -38,6 +39,7 @@ mac_app() { # 组装最小 .app 包
   <key>CFBundleName</key><string>DBA</string>
   <key>CFBundleDisplayName</key><string>DBA</string>
   <key>CFBundleExecutable</key><string>DBA</string>
+  <key>CFBundleIconFile</key><string>dba-icon.icns</string>
   <key>CFBundleIdentifier</key><string>org.databaseagent.dba</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
