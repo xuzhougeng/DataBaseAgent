@@ -1,6 +1,8 @@
 # Workflow Guide
 
-This is the end-to-end path through the workbench. The left sidebar follows the same order: project → topic & search → review → pipeline → jobs → results, with servers, the Agent center and preferences as workspace-level pages.
+Start on **AI assistant** and describe your goal. Once a model and SSH access are configured, the Project Assistant can use tools to carry out the workflow without switching through forms. Select **Workspace chat** to create a project conversationally. The right-hand panel retains live work progress and monitoring controls.
+
+The pages below show the same project state and provide the manual path: project → topic & search → review → pipeline → jobs → results, with servers and preferences at workspace level.
 
 ## 1. Create a project
 
@@ -34,7 +36,7 @@ Closing the app does not interrupt remote processes; reopening re-attaches to th
 
 ## Working with agents
 
-The right-hand panel always shows the active agent, recent events and help requests. Switch agents with the icon row; each one answers from the current project only and shows which tools it consulted. Configure models and agent instructions on **Preferences**. See [agents.md](agents.md) and [models.md](models.md).
+Use the dedicated **AI assistant** page for conversations. The Project Assistant has the complete workflow toolset; specialist tabs focus on search, review, pipelines and operations. Review decisions, pipeline changes and job creation can be recorded directly from the conversation; missing facts are requested there. The other pages remain available to inspect or change the results manually. The progress panel shows active tools, recent events and help requests. Configure models and agent instructions in **Preferences**. See [agents.md](agents.md) and [models.md](models.md).
 
 ## Scope and non-goals
 
@@ -42,7 +44,7 @@ DBA is a working first release that closes the single-server loop end to end. Kn
 
 - **Execution**: SSH on Linux only; no Slurm/PBS, containers, memory or disk quotas, or system services. CPU budgets size dispatch capacity, not thread counts.
 - **Lifecycle**: no remote kill/delete, no server editing after creation, no re-binding of existing jobs to newer pipeline versions. Lock a new version and queue new jobs instead.
-- **Recovery**: a fixed strategy with a narrow transient-failure allow-list. Agents are read-only and never rewrite commands.
+- **Recovery**: a fixed strategy with a narrow transient-failure allow-list. Agents can edit and lock new pipeline versions or resume resolved jobs through tools; existing jobs retain their frozen commands.
 - **Discovery**: no automatic slicing of very large result sets by date; raise the limit or tighten the query.
 - **Data acquisition**: downloads are whatever the locked pipeline does; DBA does not infer FASTQ download plans from papers.
 - **Remote requirements**: `sh`, `nohup`, `realpath`, `sha256sum` and the tools your steps use.
