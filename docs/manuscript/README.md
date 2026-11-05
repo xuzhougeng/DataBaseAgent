@@ -1,4 +1,12 @@
-# Preprint figures
+# Preprint manuscript and figures
+
+`manuscript.tex` is the LaTeX source of the DataBaseAgent preprint, exported from the manuscript document on 5 November 2026 (repository commit 37104a6) and converted with pandoc; `manuscript.pdf` is its XeLaTeX build. Figures are included from the PDF files in this folder, so the document compiles from this folder alone:
+
+```bash
+docker run --rm -v "$PWD/docs/manuscript:/data" -w /data texlive/texlive:latest-small sh -c 'xelatex manuscript.tex && xelatex manuscript.tex'
+```
+
+## Figures
 
 Figures for the DataBaseAgent preprint draft, exported on 5 November 2026 from the schematic diagrams in the manuscript document. Each figure exists in three forms: `.svg` (vector, editable), `.pdf` (vector, for LaTeX or direct upload) and `.png` (2375 px wide = 7.9 inches at 300 dpi). Colours are inlined; the typeface is Helvetica Neue with Arial fallback.
 
