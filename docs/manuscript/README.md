@@ -12,3 +12,7 @@ Figures for the DataBaseAgent preprint draft, exported on 5 November 2026 from t
 Legends are in the manuscript under each figure. To regenerate after editing a diagram in the document, re-export the widget code and render it with `bun` (JSX factory `__jsx`) and `rsvg-convert`; the render script lives outside the repository.
 
 Figure 5 is the acceptance screenshot `figure5-overview-screenshot.jpg` (browser preview, Chinese locale; the record is outputs/QA.md). It is only 1265 px wide, which is below 300 dpi at a 7-inch column; recapture the same page at a higher device pixel ratio before submission.
+
+## Case study
+
+The [SK-N-SH perturbation RNA-seq case](gpsadb-case/README.md) provides the GEO candidate pair, the confirmed sample groups and the two pipeline commands needed to reproduce the count archive.
