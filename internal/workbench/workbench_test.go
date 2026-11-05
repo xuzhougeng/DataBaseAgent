@@ -301,6 +301,25 @@ func TestPathAndHTTPBoundaries(t *testing.T) {
 	}
 }
 
+func TestExportManifestAndLinkBoundaries(t *testing.T) {
+	s, pid := fixture(t)
+	out, e := s.ExportManifest(pid)
+	if e != nil || out != filepath.Join(s.Store.Root(), "projects", pid, "results", "dba_manifest.json") {
+		t.Fatalf("manifest path %q: %v", out, e)
+	}
+	if b, e := os.ReadFile(out); e != nil || !strings.Contains(string(b), "数据库一") {
+		t.Fatal("manifest missing project")
+	}
+	if _, e = s.ExportManifest("../../etc"); e == nil {
+		t.Fatal("unknown project exported")
+	}
+	for _, link := range []string{"file:///etc/passwd", "javascript:alert(1)", "https://", "-a Calculator"} {
+		if openURL(link) == nil {
+			t.Errorf("unsafe link accepted: %s", link)
+		}
+	}
+}
+
 func TestAgentEvidenceAndHumanReviewGate(t *testing.T) {
 	s, pid := fixture(t)
 	_ = s.Store.Update(func(st *State) error { st.Projects[0].Candidates[0].Decision = "pending"; return nil })

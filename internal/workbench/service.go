@@ -49,6 +49,7 @@ type Request struct {
 	Note        string       `json:"note"`
 	Groups      string       `json:"groups"`
 	DownloadURL string       `json:"downloadUrl"`
+	URL         string       `json:"url"`
 	Accession   string       `json:"accession"`
 	Message     string       `json:"message"`
 	Pipeline    Pipeline     `json:"pipeline"`
@@ -82,6 +83,10 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 		return nil, s.Chat(ctx, r.ProjectID, r.AgentID, r.Message)
 	case "tick":
 		return nil, s.Tick(ctx)
+	case "exportManifest":
+		return s.ExportManifest(r.ProjectID)
+	case "openURL":
+		return nil, openURL(r.URL)
 	}
 	err = s.Store.Update(func(st *State) error {
 		switch action {
@@ -430,4 +435,19 @@ func (s *Service) PreviewArtifact(artifactID string) (string, error) {
 		}
 	}
 	return "", errors.New("产物不存在")
+}
+
+// openURL opens an http(s) link in the system browser; the desktop WebView cannot open new windows itself.
+func openURL(raw string) error {
+	u, e := url.Parse(strings.TrimSpace(raw))
+	if e != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return errors.New("只能打开 http / https 链接")
+	}
+	cmd := browserCommand(u.String())
+	hideCommand(cmd)
+	if e = cmd.Start(); e != nil {
+		return e
+	}
+	go cmd.Wait()
+	return nil
 }
