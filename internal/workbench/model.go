@@ -146,6 +146,10 @@ type Event struct {
 }
 
 type Message struct {
+	Kind           string  `json:"kind,omitempty"`
+	Task           string  `json:"task,omitempty"`
+	Error          bool    `json:"error,omitempty"`
+	RequestedAgent string  `json:"requestedAgent,omitempty"`
 	ID             string  `json:"id"`
 	ConversationID string  `json:"conversationId"`
 	ClientID       string  `json:"clientId,omitempty"`
@@ -174,6 +178,9 @@ type Conversation struct {
 
 // AgentRun is transient progress; persisted messages and events survive a restart.
 type AgentRun struct {
+	SubagentID     string `json:"subagentId,omitempty"`
+	Task           string `json:"task,omitempty"`
+	DelegationID   string `json:"delegationId,omitempty"`
 	ConversationID string `json:"conversationId"`
 	MessageID      string `json:"messageId"`
 	ProjectID      string `json:"projectId"`

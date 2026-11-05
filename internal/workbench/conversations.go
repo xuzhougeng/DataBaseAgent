@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -59,32 +60,48 @@ func conversationTitle(message string) string {
 	return string(runes)
 }
 
-// Legacy histories stay in their original scope. Every role gets an independent conversation.
+// Legacy authors and child tasks are retained in one shared main-agent conversation per scope.
+// This is idempotent, including for legacy callers that import messages without IDs.
 func migrateConversations(st *State) {
 	migrate := func(pid string, messages *[]Message) {
-		conversations := map[string]string{}
-		lastUser := map[string]string{}
+		cid := ""
+		for i := len(st.Conversations) - 1; i >= 0; i-- {
+			if c := st.Conversations[i]; c.ProjectID == pid && !c.Archived {
+				cid = c.ID
+				break
+			}
+		}
+		lastUser := ""
 		for i := range *messages {
 			m := &(*messages)[i]
+			if m.ID != "" && m.ConversationID != "" {
+				if m.Role == "user" {
+					lastUser = m.ID
+				}
+				continue
+			}
+			if cid == "" {
+				cid = id("chat")
+				st.Conversations = append(st.Conversations, Conversation{ID: cid, ProjectID: pid, AgentID: "assistant", Title: conversationTitle(m.Content), CreatedAt: m.At, UpdatedAt: m.At})
+			}
 			if m.Agent == "" {
 				m.Agent = "assistant"
 			}
-			cid := conversations[m.Agent]
-			if cid == "" {
-				cid = id("chat")
-				conversations[m.Agent] = cid
-				st.Conversations = append(st.Conversations, Conversation{ID: cid, ProjectID: pid, AgentID: m.Agent, Title: conversationTitle(m.Content), CreatedAt: m.At, UpdatedAt: m.At})
-			}
 			m.ID, m.ConversationID, m.Status = id("msg"), cid, "completed"
 			if m.Role == "user" {
-				lastUser[m.Agent] = m.ID
-				m.Status = "interrupted"
-			} else if mid := lastUser[m.Agent]; mid != "" {
-				m.ReplyTo = mid
-				if user, err := messageByID(*messages, mid); err == nil {
-					user.Status = "completed"
+				if m.Agent != "assistant" {
+					m.RequestedAgent = m.Agent
 				}
-				delete(lastUser, m.Agent)
+				lastUser = m.ID
+				m.Status = "interrupted"
+			} else if lastUser != "" {
+				m.ReplyTo = lastUser
+				if m.Kind != "delegation" {
+					if user, err := messageByID(*messages, lastUser); err == nil {
+						user.Status = "completed"
+					}
+					lastUser = ""
+				}
 			}
 			if c, err := conversationByID(st, pid, cid); err == nil {
 				c.UpdatedAt = m.At
@@ -104,6 +121,9 @@ func recoverConversations(st *State) bool {
 		var replies []Message
 		for i := range *messages {
 			m := &(*messages)[i]
+			if m.Kind == "delegation" && m.Status == "running" {
+				m.Status, m.Error, m.Content, changed = "interrupted", true, "应用关闭时子任务中断。已完成操作保留，请核对调用记录。", true
+			}
 			if !pendingMessage(*m) {
 				continue
 			}
@@ -141,6 +161,7 @@ func (s *Service) enqueueMessage(r Request, waiter chan error, legacy bool) (Mes
 		return receipt, errors.New("消息请求标识过长")
 	}
 	err := s.Store.Update(func(st *State) error {
+		migrateConversations(st)
 		messages, err := scopeMessages(st, r.ProjectID)
 		if err != nil {
 			return err
@@ -156,7 +177,10 @@ func (s *Service) enqueueMessage(r Request, waiter chan error, legacy bool) (Mes
 			if original.Status != "failed" && original.Status != "cancelled" && original.Status != "interrupted" {
 				return errors.New("仅可重试失败、停止或中断的消息")
 			}
-			r.ConversationID, r.AgentID, r.Message = original.ConversationID, original.Agent, original.Content
+			r.ConversationID, r.AgentID, r.Message = original.ConversationID, original.RequestedAgent, original.Content
+			if r.AgentID == "" {
+				r.AgentID = "assistant"
+			}
 		}
 		r.Message = strings.TrimSpace(r.Message)
 		if r.Message == "" || len(r.Message) > 8000 {
@@ -164,7 +188,11 @@ func (s *Service) enqueueMessage(r Request, waiter chan error, legacy bool) (Mes
 		}
 		for _, m := range *messages {
 			if r.ClientID != "" && m.ClientID == r.ClientID {
-				if m.Content != r.Message || m.Agent != r.AgentID || m.RetryOf != r.RetryOf || r.ConversationID != "" && m.ConversationID != r.ConversationID {
+				requested := m.RequestedAgent
+				if requested == "" {
+					requested = "assistant"
+				}
+				if m.Content != r.Message || requested != r.AgentID || m.RetryOf != r.RetryOf || r.ConversationID != "" && m.ConversationID != r.ConversationID {
 					return errors.New("消息请求标识已被其他内容使用")
 				}
 				receipt = MessageReceipt{ConversationID: m.ConversationID, MessageID: m.ID}
@@ -185,7 +213,10 @@ func (s *Service) enqueueMessage(r Request, waiter chan error, legacy bool) (Mes
 		if queued >= maxQueuedMessages {
 			return fmt.Errorf("当前项目最多排队 %d 条消息，请等待或移除排队消息", maxQueuedMessages)
 		}
-		a, err := agentByID(st, r.AgentID)
+		if _, err := requestedAgents(st, r.AgentID, r.Message); err != nil {
+			return err
+		}
+		a, err := agentByID(st, "assistant")
 		if err != nil {
 			return err
 		}
@@ -196,7 +227,7 @@ func (s *Service) enqueueMessage(r Request, waiter chan error, legacy bool) (Mes
 		if legacy && r.ConversationID == "" {
 			for i := len(st.Conversations) - 1; i >= 0; i-- {
 				c := st.Conversations[i]
-				if c.ProjectID == r.ProjectID && c.AgentID == r.AgentID && !c.Archived {
+				if c.ProjectID == r.ProjectID && c.AgentID == "assistant" && !c.Archived {
 					r.ConversationID = c.ID
 					break
 				}
@@ -205,19 +236,19 @@ func (s *Service) enqueueMessage(r Request, waiter chan error, legacy bool) (Mes
 		}
 		var c *Conversation
 		if r.ConversationID == "" {
-			st.Conversations = append(st.Conversations, Conversation{ID: id("chat"), ProjectID: r.ProjectID, AgentID: r.AgentID, Title: conversationTitle(r.Message), CreatedAt: now()})
+			st.Conversations = append(st.Conversations, Conversation{ID: id("chat"), ProjectID: r.ProjectID, AgentID: "assistant", Title: conversationTitle(r.Message), CreatedAt: now()})
 			c = &st.Conversations[len(st.Conversations)-1]
 		} else {
 			c, err = conversationByID(st, r.ProjectID, r.ConversationID)
 			if err != nil {
 				return err
 			}
-			if c.AgentID != r.AgentID || c.Archived {
+			if c.Archived {
 				return errors.New("请恢复已归档对话，或为所选 Agent 新建对话")
 			}
 		}
 		c.UpdatedAt = now()
-		msg := Message{ID: id("msg"), ConversationID: c.ID, ClientID: r.ClientID, RetryOf: r.RetryOf, Role: "user", Agent: r.AgentID, Content: r.Message, At: now(), Status: "queued"}
+		msg := Message{ID: id("msg"), ConversationID: c.ID, ClientID: r.ClientID, RetryOf: r.RetryOf, Role: "user", Agent: "assistant", RequestedAgent: r.AgentID, Content: r.Message, At: now(), Status: "queued"}
 		*messages = append(*messages, msg)
 		receipt = MessageReceipt{ConversationID: c.ID, MessageID: msg.ID}
 		return nil
@@ -365,9 +396,41 @@ func (s *Service) processChatQueue(pid string) {
 	}
 }
 
+// completedConversationHistory groups a turn with its child cards and final answer.
+// Queued prompts and results of other conversations cannot enter either agent's context.
+func completedConversationHistory(messages []Message, cid, before string, includeCurrent bool) []Message {
+	history := []Message{}
+	for _, msg := range messages {
+		if msg.ID == before {
+			if includeCurrent {
+				history = append(history, msg)
+				for _, child := range messages {
+					if child.ReplyTo == msg.ID && child.Kind == "delegation" && child.Status != "running" {
+						history = append(history, child)
+					}
+				}
+			}
+			break
+		}
+		if msg.ConversationID == cid && msg.Role == "user" && msg.Status == "completed" {
+			history = append(history, msg)
+			for _, reply := range messages {
+				if reply.ReplyTo == msg.ID {
+					history = append(history, reply)
+				}
+			}
+		}
+	}
+	return history
+}
+
 func (s *Service) executeMessage(ctx context.Context, pid string, next Message) (string, []Trace, error) {
 	state := s.Store.Snapshot()
-	a, err := agentByID(&state, next.Agent)
+	a, err := agentByID(&state, "assistant")
+	if err != nil {
+		return "", nil, err
+	}
+	targets, err := requestedAgents(&state, next.RequestedAgent, next.Content)
 	if err != nil {
 		return "", nil, err
 	}
@@ -383,33 +446,20 @@ func (s *Service) executeMessage(ctx context.Context, pid string, next Message) 
 	if err != nil {
 		return "", nil, err
 	}
-	// Group completed turns by request. Later queued prompts must not leak into this request.
-	replies := map[string]Message{}
-	for _, msg := range *messages {
-		if msg.Role == "assistant" && msg.Status == "completed" {
-			replies[msg.ReplyTo] = msg
-		}
-	}
-	turns := []Turn{}
-	for _, msg := range *messages {
-		if msg.ID == next.ID {
-			break
-		}
-		if msg.ConversationID == next.ConversationID && msg.Role == "user" && msg.Status == "completed" {
-			if reply, ok := replies[msg.ID]; ok {
-				turns = append(turns, Turn{Role: "user", Text: msg.Content}, Turn{Role: "assistant", Text: reply.Content})
-			}
-		}
-	}
-	if len(turns) > 8 {
-		turns = turns[len(turns)-8:]
-	}
+	turns := conversationTurns(completedConversationHistory(*messages, next.ConversationID, next.ID, false))
 	turns = append(turns, Turn{Role: "user", Text: next.Content})
+	ctx = context.WithValue(ctx, chatExecutionKey{}, &chatExecution{ProjectID: pid, ConversationID: next.ConversationID, MessageID: next.ID})
+	ctx = context.WithValue(ctx, agentTraceKey{}, next.ID)
+	initial := []ToolCall{}
+	for _, target := range targets {
+		args, _ := json.Marshal(map[string]string{"agentId": target, "task": next.Content})
+		initial = append(initial, ToolCall{ID: id("delegate"), Name: "delegate_agent", Args: args})
+	}
 	system := systemPrompt(*a, p)
 	if next.RetryOf != "" {
-		system += "\n这是用户主动重试的请求；前次执行可能已完成部分操作，必须先读取当前状态，避免重复创建或提交。"
+		system += "\nThis is an explicit retry. Earlier tools may have already changed state; read current state before repeating any mutation."
 	}
-	return s.runAgent(ctx, *a, m, key, system, turns, pid, next.ID)
+	return s.runAgent(ctx, *a, m, key, system, turns, pid, initial...)
 }
 
 func (s *Service) manageConversation(action string, r Request) error {
@@ -468,6 +518,9 @@ func (s *Service) manageConversation(action string, r Request) error {
 				}
 				if strings.TrimSpace(r.Message) == "" || len(r.Message) > 8000 {
 					return errors.New("请输入不超过 8000 字节的消息")
+				}
+				if _, err := requestedAgents(st, m.RequestedAgent, r.Message); err != nil {
+					return err
 				}
 				m.Content = strings.TrimSpace(r.Message)
 			} else if m.Status == "queued" {

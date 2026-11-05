@@ -210,7 +210,7 @@ func TestChatQueueFailureRetryAndScopeValidation(t *testing.T) {
 	}
 	action(t, s, "createProject", Request{Name: "another project"})
 	pid := s.Store.Snapshot().Projects[0].ID
-	for _, r := range []Request{{ProjectID: pid, ConversationID: first.ConversationID, Message: "wrong scope"}, {ConversationID: first.ConversationID, AgentID: "scout", Message: "wrong agent"}} {
+	for _, r := range []Request{{ProjectID: pid, ConversationID: first.ConversationID, Message: "wrong scope"}, {ConversationID: first.ConversationID, AgentID: "missing", Message: "wrong agent"}} {
 		if _, err := s.enqueueMessage(r, nil, false); err == nil {
 			t.Fatal("accepted invalid conversation scope")
 		}
@@ -285,6 +285,42 @@ func TestChatQueueHTTPDisconnectDoesNotCancelExecution(t *testing.T) {
 	}
 }
 
+func TestQueuedDelegationKeepsContextAndTraceWithParent(t *testing.T) {
+	s, started := chatFixture(t)
+	first, done1 := queueMessage(t, s, Request{Message: "@operator inspect settings"})
+	child := nextModelCall(t, started)
+	second, done2 := queueMessage(t, s, Request{Message: "future unrelated prompt"})
+	if runs := s.AgentRuns(); len(runs) != 1 || runs[0].SubagentID != "operator" || runs[0].ConversationID != first.ConversationID || runs[0].MessageID != first.MessageID {
+		t.Fatalf("delegation lost its queue identity: %#v", runs)
+	}
+	child.Reply <- modelReply(toolCall("get_settings", map[string]any{}))
+	childAgain := nextModelCall(t, started)
+	if strings.Contains(strings.Join(userContents(childAgain), "|"), "future unrelated") {
+		t.Fatal("queued prompt leaked into a running child")
+	}
+	st := s.Store.Snapshot()
+	if len(st.Messages) != 3 || st.Messages[1].Kind != "delegation" || st.Messages[1].Status != "running" || len(st.Messages[1].Trace) != 1 || st.Messages[1].ReplyTo != first.MessageID {
+		t.Fatal("live child trace was not checkpointed with its parent")
+	}
+	childAgain.Reply <- textReply("settings checked")
+	main := nextModelCall(t, started)
+	if strings.Contains(strings.Join(userContents(main), "|"), "future unrelated") {
+		t.Fatal("queued prompt leaked into coordinator context")
+	}
+	main.Reply <- textReply("inspection complete")
+	chatFinished(t, done1, false)
+	future := nextModelCall(t, started)
+	if got := strings.Join(userContents(future), "|"); got != "future unrelated prompt" {
+		t.Fatalf("child context leaked into another conversation: %s", got)
+	}
+	future.Reply <- textReply("separate answer")
+	chatFinished(t, done2, false)
+	st = s.Store.Snapshot()
+	if st.Messages[1].ConversationID == second.ConversationID || st.Messages[1].Status != "completed" || st.Messages[3].ReplyTo != first.MessageID {
+		t.Fatal("child card or final response attached to the wrong turn")
+	}
+}
+
 func TestConversationMigrationAndCrashRecovery(t *testing.T) {
 	root := t.TempDir()
 	legacy := `{"schema":2,"projects":[{"id":"p","messages":[{"role":"user","agent":"assistant","content":"project old","at":"2026-01-01T00:00:00Z"},{"role":"assistant","agent":"assistant","content":"project reply","at":"2026-01-01T00:00:01Z"}]}],"messages":[{"role":"user","agent":"assistant","content":"workspace old"},{"role":"assistant","agent":"assistant","content":"workspace reply"},{"role":"user","agent":"scout","content":"scout old"}],"settings":{}}`
@@ -296,12 +332,13 @@ func TestConversationMigrationAndCrashRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := store.Snapshot()
-	if st.Schema != SchemaVersion || len(st.Conversations) != 3 || len(st.Messages) != 3 || st.Messages[0].Status != "completed" || st.Messages[2].Status != "interrupted" || st.Messages[1].ReplyTo != st.Messages[0].ID {
+	if st.Schema != SchemaVersion || len(st.Conversations) != 2 || len(st.Messages) != 3 || st.Messages[0].Status != "completed" || st.Messages[2].Status != "interrupted" || st.Messages[1].ReplyTo != st.Messages[0].ID {
 		t.Fatalf("legacy history migration lost messages: %#v", st)
 	}
 	cid := st.Messages[0].ConversationID
 	if err := store.Update(func(st *State) error {
 		st.Messages = append(st.Messages, Message{ID: "crashed", ConversationID: cid, Role: "user", Agent: "assistant", Content: "running before crash", Status: "running", Trace: []Trace{{Tool: "create_project", Result: "saved"}}}, Message{ID: "waiting", ConversationID: cid, Role: "user", Agent: "assistant", Content: "queued before crash", Status: "queued"})
+		st.Messages = append(st.Messages, Message{ID: "child", ConversationID: cid, ReplyTo: "crashed", Role: "assistant", Agent: "operator", Kind: "delegation", Status: "running", Trace: []Trace{{Tool: "get_settings", Result: "read"}}})
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -315,6 +352,10 @@ func TestConversationMigrationAndCrashRecovery(t *testing.T) {
 	waiting, _ := messageByID(recovered.Messages, "waiting")
 	if running.Status != "interrupted" || waiting.Status != "queued" || !recovered.ChatQueuePaused[""] {
 		t.Fatal("crash recovery did not preserve and pause queue")
+	}
+	child := recovered.Messages[len(recovered.Messages)-2]
+	if child.ID != "child" || child.Status != "interrupted" || !child.Error || len(child.Trace) != 1 {
+		t.Fatal("child trace lost on restart")
 	}
 	last := recovered.Messages[len(recovered.Messages)-1]
 	if last.ReplyTo != "crashed" || len(last.Trace) != 1 {

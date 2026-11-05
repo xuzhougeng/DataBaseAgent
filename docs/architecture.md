@@ -10,7 +10,7 @@ DBA is a single Go binary with an embedded web UI. The scheduler, persistent con
 | Service | `internal/workbench/service.go` | Dispatches UI commands (`createProject`, `review`, `lockPipeline`, `launch`, `saveModel`, …), validates input, enforces quotas and the recorded-inclusion gate. |
 | Loop | `internal/workbench/loop.go` | The supervision loop: wakes every `intervalSeconds`, observes in-flight jobs, dispatches queued jobs within quotas, classifies failures, schedules retries, escalates to help requests, archives results. |
 | Discovery | `internal/workbench/discovery.go` | Europe PMC, PubMed and GEO adapters; paging, rate limiting, candidate normalization and de-duplication. |
-| Agents | `internal/workbench/agent.go` | Preset personas, read tools and validated command tools (`agent_tools.go`), the bounded tool-use loop, chat history and the batch reviewer. |
+| Agents | `internal/workbench/agent.go` | Preset personas, validated command tools (`agent_tools.go`), the bounded tool-use loop, shared project chat and the batch reviewer. `agent_delegation.go` handles mentions and main-agent delegation to specialists. |
 | LLM | `internal/workbench/llm.go` | Protocol adapters that translate a neutral conversation model to OpenAI Chat Completions, Anthropic Messages and Gemini generateContent. |
 | Conversations | `internal/workbench/conversations.go`, `frontend/conversations.js` | Independent histories, durable message queues, cancellation, crash recovery, drafts, and tool execution timelines. |
 | Executor | `internal/workbench/ssh.go` | The `Executor` interface and its SSH implementation: probe, idempotent start, poll, resumable verified sync. |
@@ -32,7 +32,7 @@ State
 │   ├── Searches[]     query, source, total hits, fetched, added, timestamp
 │   ├── Draft          editable Pipeline
 │   ├── Versions[]     locked, immutable Pipelines (monotonic version numbers)
-│   └── Messages[]     agent conversations with per-call Trace
+│   └── Messages[]     one project conversation, child-task results and per-call Trace
 ├── Servers[]       host, port, user, key path, work dir, CPU quota, max jobs, probe result
 ├── Jobs[]          frozen copies of input Candidate + Pipeline + Server, status, attempt,
 │                   failures, retryAt, remoteDir, log tail, error, help, resumeStatus
@@ -83,7 +83,7 @@ Back-off is `min(300, 10 × 2^min(n,5))` seconds: 20 s, 40 s, 80 s, 160 s, then 
 4. Only then are `queued` jobs dispatched. Reservation is a single transactional update that checks the server's `maxJobs` and `cpuQuota` and the pipeline's per-project `concurrency` against all in-flight jobs (including help requests whose resume phase is active). If any budget is exceeded, the job simply stays queued.
 5. Per-operation timeouts: 45 s for start/poll, 30 min for sync.
 
-Shutdown cancels the service context; an operation that fails because of shutdown does not mutate state, so the next launch resumes from the last durable snapshot.
+Shutdown cancels the service context. Remote-job supervision resumes from its last durable snapshot on the next launch. Conversation requests retain completed changes, record an interruption, and leave subsequent messages paused for explicit review and resumption.
 
 ## Persistence
 

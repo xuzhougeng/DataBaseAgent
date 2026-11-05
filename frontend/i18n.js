@@ -2,6 +2,22 @@
 // ponytail: Chinese source string is the key; missing English entries fall back to Chinese.
 let lang=(()=>{try{return localStorage.getItem('dba-lang')}catch{}})()||(navigator.language.startsWith('zh')?'zh':'en');
 const EN={
+"一个项目，一条主对话。输入 @ 调度子 Agent，主 Agent 也会按需分工。":"One project, one conversation. Mention a subagent with @, or let the main agent delegate.",
+"项目主对话":"Project conversation",
+"主 Agent":"Main agent",
+"子 Agent":"Subagent",
+"主 Agent 统筹 · 子 Agent 按需协作":"Led by the main agent · supported by specialist subagents",
+"主 Agent 持续跟进项目，协调检索、复核、流程和运维。":"The main agent follows your project and coordinates search, review, pipelines and operations.",
+"直接描述目标，或输入 @ 选择一位子 Agent 参与。":"Describe your goal, or type @ to bring in a subagent.",
+"调度子 Agent":"Delegate to a subagent",
+"描述项目目标，输入 @ 调度子 Agent…":"Describe your goal, or type @ to delegate to a subagent…",
+"主 Agent 已委派 {a}":"Main agent delegated to {a}",
+"子任务完成":"Subtask completed",
+"执行中断":"Interrupted",
+"子任务与结果保留在这条对话中，由主 Agent 汇总并继续推进。":"Subtasks and results stay in this conversation. The main agent summarizes and follows through.",
+"主 Agent 负责主对话；子 Agent 可通过 @ 或由主 Agent 调度。点击角色编辑配置。":"The main agent leads the conversation. Use @ or let it delegate to subagents. Click a role to configure it.",
+"先为主 Agent 配置可用模型":"Configure a working model for the main agent first",
+
 "加载更早的消息":"Load earlier messages",
 "正在执行":"Running","正在停止…":"Stopping…","执行失败":"Failed","已停止":"Stopped","执行中断":"Interrupted",
 "查看项目":"List projects","读取项目":"Read project","更新项目":"Update project","读取检索历史":"Read search history","查看候选":"List candidates","读取候选详情":"Read candidate","导入候选":"Import candidates","复核候选":"Review candidates","记录复核结论":"Save review decision","读取处理流程":"Read pipeline","保存处理流程":"Save pipeline","锁定流程版本":"Lock pipeline version","读取任务详情":"Read job details","恢复任务":"Resume job","查看服务器":"List servers","检查服务器连接":"Check server connection","查看产物":"List outputs","读取操作记录":"Read activity log","读取设置":"Read settings","更新设置":"Update settings","保存 Agent 配置":"Save agent settings","重置 Agent 配置":"Reset agent settings","巡检任务":"Check jobs",

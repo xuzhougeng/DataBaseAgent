@@ -369,7 +369,7 @@ func TestDiscoveryDeduplicationAndRecordedLimits(t *testing.T) {
 }
 
 // fakeModel answers with a tool call on the first request and a final text on the second, recording request bodies.
-func fakeModel(t *testing.T, firstBody, secondBody string) *[]map[string]any {
+func fakeModel(t *testing.T, firstBody, secondBody string, finalBody ...string) *[]map[string]any {
 	t.Helper()
 	previous := httpClient
 	t.Cleanup(func() { httpClient = previous })
@@ -382,6 +382,8 @@ func fakeModel(t *testing.T, firstBody, secondBody string) *[]map[string]any {
 		reply := secondBody
 		if len(*seen) == 1 {
 			reply = firstBody
+		} else if len(*seen) > 2 && len(finalBody) > 0 {
+			reply = finalBody[0]
 		}
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(reply))}, nil
 	})}
@@ -398,7 +400,7 @@ func TestAgentLoopScopesToolsAndRecordsTrace(t *testing.T) {
 		`{"choices":[{"finish_reason":"stop","message":{"content":"建议收窄检索式。"}}]}`)
 	action(t, s, "message", Request{ProjectID: pid, AgentID: "scout", Message: "评估检索式"})
 	msgs := s.Store.Snapshot().Projects[0].Messages
-	if len(msgs) != 2 || msgs[1].Agent != "scout" || msgs[1].Content != "建议收窄检索式。" || len(msgs[1].Trace) != 2 {
+	if len(msgs) != 3 || msgs[0].Agent != "assistant" || msgs[1].Kind != "delegation" || msgs[1].Agent != "scout" || msgs[1].Content != "建议收窄检索式。" || len(msgs[1].Trace) != 2 || msgs[2].Agent != "assistant" {
 		t.Fatalf("loop result not persisted: %#v", msgs)
 	}
 	if msgs[1].Trace[0].Error || !strings.Contains(msgs[1].Trace[0].Result, "Dataset one") || !msgs[1].Trace[1].Error {
@@ -409,7 +411,7 @@ func TestAgentLoopScopesToolsAndRecordsTrace(t *testing.T) {
 		t.Fatalf("invalid first request: %v", first)
 	}
 	second := (*seen)[1]["messages"].([]any)
-	if len(second) != 5 || second[3].(map[string]any)["role"] != "tool" || second[4].(map[string]any)["tool_call_id"] != "c2" {
+	if len(second) != 6 || second[len(second)-2].(map[string]any)["role"] != "tool" || second[len(second)-1].(map[string]any)["tool_call_id"] != "c2" {
 		t.Fatalf("tool results not fed back: %v", second)
 	}
 	// Reset restores preset instructions but keeps the chosen model.
@@ -437,8 +439,8 @@ func TestAnthropicAndGeminiProtocolRoundTrip(t *testing.T) {
 		t.Fatalf("invalid anthropic request: %v", first)
 	}
 	msgs := second["messages"].([]any)
-	result := msgs[2].(map[string]any)["content"].([]any)[0].(map[string]any)
-	if len(msgs) != 3 || msgs[1].(map[string]any)["role"] != "assistant" || result["type"] != "tool_result" || result["tool_use_id"] != "tu1" {
+	result := msgs[len(msgs)-1].(map[string]any)["content"].([]any)[0].(map[string]any)
+	if len(msgs) != 4 || msgs[len(msgs)-2].(map[string]any)["role"] != "assistant" || result["type"] != "tool_result" || result["tool_use_id"] != "tu1" {
 		t.Fatalf("anthropic tool_result not shaped: %v", msgs)
 	}
 	if m := s.Store.Snapshot().Projects[0].Messages; m[1].Content != "没有任务。" || m[1].Trace[0].Tool != "list_jobs" {
@@ -448,18 +450,18 @@ func TestAnthropicAndGeminiProtocolRoundTrip(t *testing.T) {
 	action(t, s, "saveModel", Request{Model: ModelProfile{Name: "gemini", Protocol: "gemini", BaseURL: "https://generativelanguage.googleapis.com/v1beta", Model: "gemini-x", APIKeyEnv: "DBA_TEST_KEY"}})
 	gid := s.Store.Snapshot().Settings.Models[1].ID
 	action(t, s, "saveAgent", Request{Agent: Agent{ID: "pipeline", System: "x", ModelID: gid, MaxSteps: 2}})
-	seen = fakeModel(t, `{"candidates":[{"finishReason":"STOP","content":{"parts":[{"functionCall":{"name":"get_pipeline","args":{}}}]}}]}`, `{"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"流程只有一步。"}]}}]}`)
+	seen = fakeModel(t, `{"candidates":[{"finishReason":"STOP","content":{"parts":[{"functionCall":{"name":"get_pipeline","args":{}}}]}}]}`, `{"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"流程只有一步。"}]}}]}`, `{"stop_reason":"end_turn","content":[{"type":"text","text":"已汇总流程检查结果。"}]}`)
 	action(t, s, "message", Request{ProjectID: pid, AgentID: "pipeline", Message: "审阅流程"})
 	first, second = (*seen)[0], (*seen)[1]
 	if first["_path"] != "/v1beta/models/gemini-x:generateContent" || first["_goog"] != "k" || first["system_instruction"] == nil {
 		t.Fatalf("invalid gemini request: %v", first)
 	}
 	contents := second["contents"].([]any)
-	part := contents[2].(map[string]any)["parts"].([]any)[0].(map[string]any)
-	if len(contents) != 3 || contents[1].(map[string]any)["role"] != "model" || part["functionResponse"] == nil {
+	part := contents[len(contents)-1].(map[string]any)["parts"].([]any)[0].(map[string]any)
+	if len(contents) < 3 || contents[len(contents)-2].(map[string]any)["role"] != "model" || part["functionResponse"] == nil {
 		t.Fatalf("gemini functionResponse not shaped: %v", contents)
 	}
-	if m := s.Store.Snapshot().Projects[0].Messages; m[3].Content != "流程只有一步。" || !strings.Contains(m[3].Trace[0].Result, "user workflow") {
+	if m := s.Store.Snapshot().Projects[0].Messages; m[len(m)-2].Content != "流程只有一步。" || !strings.Contains(m[len(m)-2].Trace[0].Result, "user workflow") {
 		t.Fatalf("gemini reply lost: %#v", m)
 	}
 }

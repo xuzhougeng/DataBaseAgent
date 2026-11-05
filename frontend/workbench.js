@@ -7,7 +7,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 
 let db={projects:[],servers:[],jobs:[],artifacts:[],events:[],settings:{}};
 let meta={},lastState='',loading=false;
-const ui={page:'agent',projectId:null,filter:'pending',candidateId:'',jobFilter:'all',jobQuery:'',agentId:'',modelId:'',busy:new Set(),dirty:{},chatDrafts:{},conversationSelections:{},chatReadCounts:{},chatOutbox:{},chatSending:new Set(),chatScrolls:{},chatDetails:{},historyOpen:window.innerWidth>=1200,historyQuery:'',historyArchived:false,asideHidden:(()=>{try{return localStorage.getItem('dba-aside')==='hidden'}catch{}})()};
+const ui={page:'agent',projectId:null,filter:'pending',candidateId:'',jobFilter:'all',jobQuery:'',modelId:'',busy:new Set(),dirty:{},chatDrafts:{},conversationSelections:{},chatReadCounts:{},chatOutbox:{},chatSending:new Set(),chatScrolls:{},chatDetails:{},historyOpen:window.innerWidth>=1200,historyQuery:'',historyArchived:false,asideHidden:(()=>{try{return localStorage.getItem('dba-aside')==='hidden'}catch{}})()};
 const protocolNames={openai:'OpenAI Chat Completions 兼容',anthropic:'Anthropic Messages',gemini:'Google Gemini'};
 const protocolHints={openai:'例如 https://api.openai.com/v1；DeepSeek、Qwen、Ollama、vLLM、OpenRouter 等兼容服务同理，应用追加 /chat/completions',anthropic:'例如 https://api.anthropic.com/v1，应用追加 /messages；模型 ID 如 claude-opus-5-5',gemini:'例如 https://generativelanguage.googleapis.com/v1beta，应用追加 /models/{模型}:generateContent'};
 const labels={queued:'排队中',starting:'提交中',running:'运行中',retry_wait:'等待重试',syncing:'结果同步',succeeded:'已完成',needs_help:'需要协助',pending:'待确认',accepted:'已纳入',excluded:'已排除',include:'建议纳入',exclude:'建议排除',uncertain:'需要确认',online:'连接正常',unchecked:'待检查',error:'连接异常'};
@@ -16,7 +16,7 @@ const stageNames=['待定义主题','待检索','待复核','待定义流程','�
 const current=()=>db.projects.find(p=>p.id===ui.projectId);
 const agents=()=>db.settings.agents||[];
 const models=()=>db.settings.models||[];
-const currentAgent=()=>agents().find(a=>a.id===ui.agentId)||agents()[0];
+const currentAgent=()=>agents().find(a=>a.id==='assistant')||agents()[0];
 const agentModel=a=>models().find(m=>m.id===a.modelId)||models()[0];
 const projectMeta=p=>({projectId:p.id,name:p.name,description:p.description,organism:p.organism,assay:p.assay,criteria:p.criteria,query:p.query,source:p.source});
 const projectJobs=(pid=ui.projectId)=>db.jobs.filter(j=>j.projectId===pid);
@@ -66,7 +66,39 @@ async function act(action,body={},message=t('已保存')){
 }
 function run(fn){Promise.resolve().then(fn).catch(e=>toast(e.message||String(e)));}
 function go(page){ui.page=page;render();document.querySelector('main')?.scrollTo(0,0);}
-function selectProject(id){ui.projectId=id;ui.candidateId='';ui.historyQuery='';syncChatState();saveChatUI();if(ui.page!=='agent')ui.page=id?'overview':'agent';render();}
+function selectProject(id){ui.projectId=id;ui.candidateId='';ui.historyQuery='';syncChatState();saveChatUI();ui.page='agent';render();}
+function mentionQuery(input){
+  const prefix=input.value.slice(0,input.selectionStart),match=prefix.match(/(?:^|[\s,，。;；:：、(（])@([\p{L}\p{N}_-]*)$/u);
+  return match?{start:prefix.lastIndexOf('@'),end:input.selectionStart,query:match[1].toLowerCase()}:null;
+}
+function closeMentions(){ui.mention=null;const menu=document.getElementById('agent-mentions');if(menu){menu.hidden=true;menu.innerHTML='';}const input=document.getElementById('agent-message');input?.setAttribute('aria-expanded','false');input?.removeAttribute('aria-activedescendant');}
+function updateMentions(input,keepSelection=false){
+  const query=mentionQuery(input),menu=document.getElementById('agent-mentions');
+  if(!query||!menu){closeMentions();return;}
+  const matches=agents().filter(a=>a.id!=='assistant'&&[a.id,a.name,t(a.name)].some(name=>name.toLowerCase().includes(query.query)));
+  if(!matches.length){closeMentions();return;}
+  const index=keepSelection?Math.min(ui.mention?.index||0,matches.length-1):0;
+  ui.mention={...query,matches,index};menu.hidden=false;input.setAttribute('aria-expanded','true');input.setAttribute('aria-activedescendant',`mention-${matches[index].id}`);
+  menu.innerHTML=`<div class="mention-heading">${t('调度子 Agent')}</div>${matches.map((a,i)=>`<button type="button" id="mention-${a.id}" role="option" aria-selected="${i===index}" class="mention-option ${i===index?'selected':''}" onmousedown="event.preventDefault()" onclick="insertAgentMention('${a.id}')"><span class="agent-icon">${I(a.icon)}</span><span><strong>${esc(t(a.name))} <code>@${a.id}</code></strong><small>${esc(t(a.description))}</small></span>${!meta.ready?.[a.id]?badge(t('待配置模型'),'orange'):''}</button>`).join('')}`;
+}
+function insertAgentMention(aid){
+  const input=document.getElementById('agent-message');if(!input||input.disabled)return;
+  const query=mentionQuery(input),start=query?.start??input.selectionStart,end=query?.end??input.selectionEnd,prefix=start&&!/\s$/.test(input.value.slice(0,start))&&!query?' ':'';
+  input.setRangeText(`${prefix}@${aid} `,start,end,'end');setChatDraft(input.value);closeMentions();input.focus();
+}
+function openAgentMentions(){
+  const input=document.getElementById('agent-message');if(!input||input.disabled)return;
+  input.focus();if(!mentionQuery(input)){const start=input.selectionStart,prefix=start&&!/\s$/.test(input.value.slice(0,start))?' ':'';input.setRangeText(prefix+'@',start,input.selectionEnd,'end');setChatDraft(input.value);}updateMentions(input);
+}
+function chatKeydown(event){
+  if(event.isComposing)return;
+  if(ui.mention&&['ArrowDown','ArrowUp','Tab','Enter','Escape'].includes(event.key)&&!event.shiftKey){
+    event.preventDefault();if(event.key==='Escape'){closeMentions();return;}
+    if(['Tab','Enter'].includes(event.key)){insertAgentMention(ui.mention.matches[ui.mention.index].id);return;}
+    ui.mention.index=(ui.mention.index+(event.key==='ArrowDown'?1:-1)+ui.mention.matches.length)%ui.mention.matches.length;updateMentions(event.target,true);return;
+  }
+  if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAgent();}
+}
 function usePrompt(index){setChatDraft(t(agentPrompts[index]));render();document.getElementById('agent-message')?.focus();}
 const agentPrompts=['根据项目目标，完成检索、复核、流程配置并创建处理任务。','检查当前进展，找出阻塞环节并处理可以解决的问题。','查看已完成任务和产物，汇总数据来源与处理结果。'];
 function stage(p){if(projectJobs(p.id).some(j=>j.status==='succeeded'))return 5;if(projectJobs(p.id).length||p.draft.locked)return 4;if(p.candidates.some(c=>c.decision==='accepted'))return 3;if(p.candidates.length)return 2;if(p.criteria&&p.query)return 1;return 0;}
@@ -89,7 +121,7 @@ function render(){
   for(const [s,top] of scrolls){const el=document.querySelector(s);if(el&&top)el.scrollTop=top;}
   const chat=document.querySelector('.chat-log'),position=ui.chatScrolls[chatKey];if(chat)chat.scrollTop=!position||position.bottom?chat.scrollHeight:position.top;
   if(['agent-message','chat-history-search'].includes(focusedId)){const el=document.getElementById(focusedId);if(el&&!el.disabled){el.focus({preventScroll:true});if(selection)el.setSelectionRange(...selection);}}
-  resizeComposer();onChatScroll();
+  resizeComposer();onChatScroll();if(focusedId==='agent-message')updateMentions(document.getElementById('agent-message'),true);
 }
 
 function sidebar(p){
@@ -118,12 +150,11 @@ function aside(p){
   if(ui.asideHidden)return `<aside class="aside rail"><button class="icon-button" onclick="toggleAside()" aria-label="${t('展开工作进展')}" title="${t('展开工作进展')}">${I('activity')}</button>${helps.length?`<span class="count warn">${helps.length}</span>`:''}</aside>`;
   return `<aside class="aside" aria-label="${t('AI 工作进展')}"><div class="aside-head">${I('activity')}<div><strong>${t('工作进展')}</strong><small>${paused?t('巡检已暂停，远端进程继续运行'):t('每 {n} 秒巡检 · {m} 个活跃任务',{n:db.settings.intervalSeconds,m:db.jobs.filter(active).length})}</small></div><button class="icon-button" onclick="toggleAside()" aria-label="${t('收起工作进展')}" title="${t('收起工作进展')}">${I('chevron')}</button></div>
     <div class="progress-controls">${btn(t('立即巡检'),'tick()','small','sync')}${btn(t(paused?'恢复巡检':'暂停巡检'),'toggleAgent()','small',paused?'play':'pause')}</div>
-    <div class="aside-feed">${runs.map(r=>`<div class="run-progress" role="status"><strong>${I('agent')}${esc(agents().find(a=>a.id===r.agentId)?.name||'Agent')}</strong><p>${r.tool?t('正在执行 {tool}',{tool:esc(r.tool)}):t('正在规划下一步…')}</p><small>${t('第 {n} 步',{n:r.step||1})} · ${date(r.startedAt)}</small></div>`).join('')}
+    <div class="aside-feed">${runs.map(r=>`<div class="run-progress" role="status"><strong>${I('agent')}${esc(agents().find(a=>a.id===(r.subagentId||r.agentId))?.name||'Agent')}</strong><p>${r.tool?t('正在执行 {tool}',{tool:esc(r.tool)}):t('正在规划下一步…')}</p><small>${t('第 {n} 步',{n:r.step||1})} · ${date(r.startedAt)}</small></div>`).join('')}
     ${helps.map(j=>`<div class="help-card"><strong>${I('alert')}${t('{a} 需要你的判断',{a:esc(j.accession)})}</strong><p>${esc(j.help||j.error)}</p><div class="decision">${btn(t('查看并处理'),`jobDetail('${j.id}')`,'small')}${btn(t('交给 AI 排查'),`askAgent('operator','${j.id}')`,'small','agent',!meta.ready?.operator)}</div></div>`).join('')}
     <div class="aside-label"><span>${t('最近动态')}</span><span>${t('上次巡检')} ${date(db.lastTick,t('尚未巡检'))}</span></div>${events.length?events.map(e=>`<div class="event ${e.kind==='help'?'warn':e.kind==='error'?'err':''}"><time>${date(e.at)}</time><strong>${esc(e.title)}</strong>${e.detail?`<p>${esc(e.detail)}</p>`:''}${e.jobId?`<button class="text-button" onclick="jobDetail('${e.jobId}')">${t('查看任务')}</button>`:''}</div>`).join(''):`<p class="muted">${t('项目动态会显示在这里。')}</p>`}</div>
     ${ui.page!=='agent'?btn(t('打开 AI 助手'),"go('agent')",'small','agent'):''}</aside>`;
 }
-
 function allProjects(){
   return head(t('所有项目'),t('{p} 个项目 · {s} 台服务器 · {j} 个任务运行中',{p:db.projects.length,s:db.servers.length,j:db.jobs.filter(active).length}),btn(t('新建项目'),'newProject()','primary','plus'))+`${db.projects.length?`<div class="grid-projects">${db.projects.map(p=>{const s=stage(p),jobs=projectJobs(p.id),attention=pending(p).length||jobs.some(j=>j.status==='needs_help');return `<button class="project-card" onclick="selectProject('${p.id}')"><div class="project-top"><h2>${esc(p.name)}</h2>${badge(t(stageNames[s]),attention?'orange':s?'':'gray')}</div><p>${esc(p.description||t('尚未填写研究目标'))}</p><div class="project-meta">${t('{c} 条候选 · {r} 条待复核 · {j} 个任务运行中 · {a} 份产物',{c:p.candidates.length,r:pending(p).length,j:jobs.filter(active).length,a:projectArtifacts(p.id).length})}</div><div class="progress"><i style="width:${s*20}%"></i></div></button>`;}).join('')}</div>`:empty(t('尚无项目'))}`;
 }
@@ -192,7 +223,7 @@ function messageMarkdown(content){
 
 function agentCenterPage(){
   const helps=helpJobs(),events=db.events.slice(-100).reverse(),s=db.settings,readyCount=agents().filter(a=>meta.ready?.[a.id]).length,cur=currentAgent();
-  return head(t('Agent 中心'),s.paused?t('自动巡检已暂停，远端进程继续运行。'):t('每 {i} 秒巡检远端任务，可恢复错误最多重试 {r} 次；{c}/{n} 个 Agent 已配置模型。',{i:s.intervalSeconds,r:s.maxRetries,c:readyCount,n:agents().length}),btn(t(s.paused?'恢复巡检':'暂停巡检'),'toggleAgent()',s.paused?'primary':'',s.paused?'play':'pause')+btn(t('偏好设置'),"go('settings')",'','settings'))+`<section class="card"><div class="card-head"><h2>${t('Agent 角色')}</h2><small>${t('左键进入 AI 助手对话，右键编辑配置')}</small></div><div class="roster">${agents().map(a=>{const m=agentModel(a);return `<button class="roster-card ${a.id===cur?.id?'active':''}" data-agent-id="${a.id}" title="${t('右击或按 Shift+F10 编辑 Agent')}" onclick="ui.agentId='${a.id}';go('agent')" oncontextmenu="event.preventDefault();agentModal('${a.id}')" onkeydown="if(event.key==='ContextMenu'||event.shiftKey&&event.key==='F10'){event.preventDefault();agentModal('${a.id}')}"><span class="agent-icon">${I(a.icon)}</span><strong>${esc(t(a.name))}</strong><small>${esc(t(a.description))}</small><span class="muted mono">${m?esc(m.name):t('未配置模型')}</span>${badge(t(meta.ready?.[a.id]?'可用':'待配置模型'),meta.ready?.[a.id]?'':'orange')}</button>`;}).join('')}</div></section>
+  return head(t('Agent 中心'),s.paused?t('自动巡检已暂停，远端进程继续运行。'):t('每 {i} 秒巡检远端任务，可恢复错误最多重试 {r} 次；{c}/{n} 个 Agent 已配置模型。',{i:s.intervalSeconds,r:s.maxRetries,c:readyCount,n:agents().length}),btn(t(s.paused?'恢复巡检':'暂停巡检'),'toggleAgent()',s.paused?'primary':'',s.paused?'play':'pause')+btn(t('偏好设置'),"go('settings')",'','settings'))+`<section class="card"><div class="card-head"><h2>${t('Agent 角色')}</h2><small>${t('主 Agent 负责主对话；子 Agent 可通过 @ 或由主 Agent 调度。点击角色编辑配置。')}</small></div><div class="roster">${agents().map(a=>{const m=agentModel(a);return `<button class="roster-card ${a.id===cur?.id?'active':''}" data-agent-id="${a.id}" title="${t('编辑 Agent')}" onclick="agentModal('${a.id}')" oncontextmenu="event.preventDefault();agentModal('${a.id}')" onkeydown="if(event.key==='ContextMenu'||event.shiftKey&&event.key==='F10'){event.preventDefault();agentModal('${a.id}')}"><span class="agent-icon">${I(a.icon)}</span><strong>${esc(t(a.name))} ${badge(t(a.id==='assistant'?'主 Agent':'子 Agent'),'gray')}</strong><small>${esc(t(a.description))}</small><span class="muted mono">${m?esc(m.name):t('未配置模型')}</span>${badge(t(meta.ready?.[a.id]?'可用':'待配置模型'),meta.ready?.[a.id]?'':'orange')}</button>`;}).join('')}</div></section>
     <section class="card"><div class="card-head"><h2>${t('求助请求')}</h2>${badge(helps.length?t('{n} 项待处理',{n:helps.length}):t('无'),helps.length?'orange':'gray')}</div>${helps.length?helps.map(j=>`<div class="content-pad"><div class="server-title"><strong class="mono">${esc(j.accession)}</strong><span class="muted">${esc(db.projects.find(p=>p.id===j.projectId)?.name||'')}</span></div><p class="muted">${esc(j.help)}</p>${j.error?`<p class="muted">${esc(j.error)}</p>`:''}<div class="decision">${btn(t('查看证据与处理'),`jobDetail('${j.id}')`,'small','arrow')}${btn(t('让运维巡检员诊断'),`askAgent('operator','${j.id}')`,'small','wrench',!meta.ready?.operator)}</div></div>`).join(''):`<div class="content-pad muted">${t('目前没有需要协助的任务。')}</div>`}</section>
     <section class="card"><div class="card-head"><h2>${t('操作记录')}</h2><small>${t('最近 {n} 条',{n:events.length})}</small></div>${table(['时间','动作','依据与结果'].map(x=>t(x)),events.map(e=>`<tr><td>${date(e.at)}</td><td>${esc(e.title)}</td><td class="wrap">${esc(e.detail)}${e.jobId?` <button class="text-button" onclick="jobDetail('${e.jobId}')">${t('查看任务')}</button>`:''}</td></tr>`),t('等待第一条记录'))}</section>`;
 }
@@ -224,7 +255,7 @@ document.addEventListener('input',e=>{const el=e.target;if(el.id&&!['agent-messa
 document.addEventListener('click',e=>{const a=e.target.closest('a[href^="http"]');if(!a)return;e.preventDefault();run(()=>request('openURL',{url:a.href}));});
 
 function newProject(){modal(t('新建数据库项目'),field(t('项目名称'),'new-name')+field(t('研究目标'),'new-desc','','textarea'),btn(t('创建项目'),'createProject()','primary','plus'));}
-function createProject(){run(async()=>{const name=val('new-name');if(!name)throw new Error(t('请输入项目名称'));await act('createProject',{name,description:val('new-desc')},'项目已创建');ui.projectId=db.projects.at(-1).id;closeModal();go('search');});}
+function createProject(){run(async()=>{const name=val('new-name');if(!name)throw new Error(t('请输入项目名称'));await act('createProject',{name,description:val('new-desc')},'项目已创建');ui.projectId=db.projects.at(-1).id;closeModal();syncChatState();go('agent');});}
 function scopeBody(){const p=current();return {...projectMeta(p),name:val('project-name')||p.name,description:val('topic'),organism:val('organism'),assay:val('assay'),criteria:val('criteria'),query:val('query'),source:val('source')};}
 function saveScope(){run(()=>act('saveProject',scopeBody(),'研究范围与检索策略已保存'));}
 function runSearch(){run(async()=>{const body=scopeBody(),limit=Number(val('search-limit'));if(!body.query)throw new Error(t('请填写检索表达式'));await act('saveProject',body,'');toast(t('正在检索，请等待来源服务返回…'));const r=(await act('search',{...body,limit},'')).result;modal(t('检索已完成'),code(t('来源：{s}\n命中总数：{t}\n本次获取：{f}\n合并后新增：{a}',{s:r.source,t:r.total,f:r.fetched,a:r.added}))+`<p class="muted">${t('达到获取上限时，请调整上限或补充检索式。结果尚未复核。')}</p>`,btn(t('开始复核'),"closeModal();go('review')",'primary','arrow'));});}
@@ -286,7 +317,7 @@ function resetAgent(aid){
 function toggleAgent(){run(()=>act('settings',{settings:{...db.settings,paused:!db.settings.paused}},t(db.settings.paused?'巡检已恢复':'自动巡检已暂停')));}
 function tick(){run(()=>act('tick',{},'已发起一次巡检'));}
 
-function askAgent(aid,jid){const j=db.jobs.find(v=>v.id===jid);if(!j)return;ui.agentId=aid;ui.projectId=j.projectId;syncChatState();closeModal();setChatDraft(t('请诊断任务 {a}（id {i}）：读取其日志与服务器状态，判断失败原因并给出具体修复步骤。',{a:j.accession,i:j.id}));go('agent');sendAgent();}
+function askAgent(aid,jid){const j=db.jobs.find(v=>v.id===jid);if(!j)return;ui.projectId=j.projectId;syncChatState();closeModal();setChatDraft('@'+aid+' '+t('请诊断任务 {a}（id {i}）：读取其日志与服务器状态，判断失败原因并给出具体修复步骤。',{a:j.accession,i:j.id}));go('agent');sendAgent();}
 function artifact(aid){run(async()=>{const a=db.artifacts.find(x=>x.id===aid),r=await request('artifact?id='+encodeURIComponent(aid));modal(a.name+' · '+t('预览'),`<p class="muted mono">${esc(a.path)}<br>SHA-256 ${esc(a.sha256)}</p><p class="muted">${t('最多预览前 64 KiB。')}</p>${code(r.text)}`);});}
 function exportManifest(){run(async()=>{const r=await request('exportManifest',{projectId:ui.projectId});toast(t('产物清单已导出到 {p}',{p:r.result}));});}
 

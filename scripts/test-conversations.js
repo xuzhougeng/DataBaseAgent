@@ -17,9 +17,9 @@ function fixture(){
   return {ctx,eval:code=>vm.runInContext(code,ctx),saved};
 }
 
-test('drafts and selections are isolated by conversation, project, and agent and survive reload',()=>{
+test('drafts and selections are isolated by main conversation and project and survive reload',()=>{
   const f=fixture();
-  f.eval(`setChatDraft('workspace draft');chooseAgent('scout');setChatDraft('scout draft');chooseAgent('assistant');`);
+  f.eval(`setChatDraft('workspace draft');`);
   assert.equal(f.eval('chatDraft()'),'workspace draft');
   f.eval(`db.conversations=[{id:'c1',projectId:'',agentId:'assistant',title:'first',updatedAt:'2026-01-01'}];openConversation('c1');setChatDraft('saved chat draft');newConversation();`);
   assert.equal(f.eval('chatDraft()'),'workspace draft');
@@ -91,4 +91,25 @@ test('long histories render progressively without dropping stored messages',()=>
   assert.ok(!html.includes('data-message-id="u0"'));
   assert.ok(html.includes('data-message-id="u44"'));
   assert.equal(f.eval('db.messages.length'),45);
+});
+
+test('specialist cards and traces stay between their parent request and main reply',()=>{
+  const f=fixture();
+  f.eval(`db.messages=[{id:'u1',role:'user',agent:'assistant',content:'@scout task',status:'completed'},{id:'u2',role:'user',agent:'assistant',content:'queued later',status:'queued'},{id:'child',replyTo:'u1',kind:'delegation',role:'assistant',agent:'scout',task:'specialist task',content:'child result',status:'completed',trace:[{tool:'list_candidates',args:'{}',result:'[]',ms:2}]},{id:'main',replyTo:'u1',role:'assistant',agent:'assistant',content:'main summary',status:'completed'}];`);
+  const html=f.eval('chatLog(db.messages)');
+  assert.ok(html.indexOf('child-child')>html.indexOf('data-message-id="u1"'));
+  assert.ok(html.indexOf('child result')<html.indexOf('data-message-id="main"'));
+  assert.ok(html.indexOf('data-message-id="main"')<html.indexOf('data-message-id="u2"'));
+  assert.ok(html.includes('trace-child'));
+  assert.ok(!html.includes('trace-u1-0'));
+});
+
+test('mention matching ignores emails and keeps the main conversation selected',()=>{
+  const f=fixture();
+  assert.equal(f.eval(`mentionQuery({value:'hello user@scout.com',selectionStart:20})`),null);
+  assert.equal(f.eval(`mentionQuery({value:'ask @sc',selectionStart:7}).query`),'sc');
+  const html=f.eval('agentPage()');
+  assert.ok(html.includes('id="agent-mentions"'));
+  assert.ok(!html.includes('role="tablist"'));
+  assert.ok(html.includes('Delegate to a subagent'));
 });
