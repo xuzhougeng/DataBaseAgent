@@ -313,11 +313,7 @@ func TestAgentEvidenceAndHumanReviewGate(t *testing.T) {
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"choices":[{"message":{"content":"{\"suggestion\":\"include\",\"confidence\":\"high\",\"reason\":\"yes\",\"evidence\":\"invented sentence\"}"}}]}`))}, nil
 	})}
 	t.Setenv("DBA_TEST_KEY", "test-token")
-	cfg := s.Store.Snapshot().Settings
-	cfg.ModelURL = "https://model.example/v1"
-	cfg.Model = "test-model"
-	cfg.APIKeyEnv = "DBA_TEST_KEY"
-	action(t, s, "settings", Request{Settings: cfg})
+	action(t, s, "saveModel", Request{Model: ModelProfile{Name: "test", Protocol: "openai", BaseURL: "https://model.example/v1", Model: "test-model", APIKeyEnv: "DBA_TEST_KEY"}})
 	if e := s.AgentReview(context.Background(), pid, ""); e != nil {
 		t.Fatal(e)
 	}
@@ -350,5 +346,120 @@ func TestDiscoveryDeduplicationAndRecordedLimits(t *testing.T) {
 	}
 	if len(s.Store.Snapshot().Projects[0].Searches) != 1 {
 		t.Fatal("missing search provenance")
+	}
+}
+
+// fakeModel answers with a tool call on the first request and a final text on the second, recording request bodies.
+func fakeModel(t *testing.T, firstBody, secondBody string) *[]map[string]any {
+	t.Helper()
+	previous := httpClient
+	t.Cleanup(func() { httpClient = previous })
+	seen := &[]map[string]any{}
+	httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		body["_path"], body["_auth"], body["_key"], body["_goog"] = r.URL.Path, r.Header.Get("Authorization"), r.Header.Get("x-api-key"), r.Header.Get("x-goog-api-key")
+		*seen = append(*seen, body)
+		reply := secondBody
+		if len(*seen) == 1 {
+			reply = firstBody
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(reply))}, nil
+	})}
+	return seen
+}
+
+func TestAgentLoopScopesToolsAndRecordsTrace(t *testing.T) {
+	s, pid := fixture(t)
+	t.Setenv("DBA_TEST_KEY", "k")
+	action(t, s, "saveModel", Request{Model: ModelProfile{Name: "m", Protocol: "openai", BaseURL: "https://model.example/v1", Model: "x", APIKeyEnv: "DBA_TEST_KEY"}})
+	mid := s.Store.Snapshot().Settings.Models[0].ID
+	action(t, s, "saveAgent", Request{Agent: Agent{ID: "scout", System: "custom instructions", ModelID: mid, MaxSteps: 3}})
+	seen := fakeModel(t, `{"choices":[{"finish_reason":"tool_calls","message":{"content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"list_candidates","arguments":"{\"decision\":\"all\"}"}},{"id":"c2","type":"function","function":{"name":"get_job","arguments":"{\"id\":\"GSE1\"}"}}]}}]}`,
+		`{"choices":[{"finish_reason":"stop","message":{"content":"建议收窄检索式。"}}]}`)
+	action(t, s, "message", Request{ProjectID: pid, AgentID: "scout", Message: "评估检索式"})
+	msgs := s.Store.Snapshot().Projects[0].Messages
+	if len(msgs) != 2 || msgs[1].Agent != "scout" || msgs[1].Content != "建议收窄检索式。" || len(msgs[1].Trace) != 2 {
+		t.Fatalf("loop result not persisted: %#v", msgs)
+	}
+	if msgs[1].Trace[0].Error || !strings.Contains(msgs[1].Trace[0].Result, "Dataset one") || !msgs[1].Trace[1].Error {
+		t.Fatalf("tool scope not enforced: %#v", msgs[1].Trace)
+	}
+	first := (*seen)[0]
+	if first["_path"] != "/v1/chat/completions" || first["_auth"] != "Bearer k" || !strings.HasPrefix(first["messages"].([]any)[0].(map[string]any)["content"].(string), "custom instructions") {
+		t.Fatalf("invalid first request: %v", first)
+	}
+	second := (*seen)[1]["messages"].([]any)
+	if len(second) != 5 || second[3].(map[string]any)["role"] != "tool" || second[4].(map[string]any)["tool_call_id"] != "c2" {
+		t.Fatalf("tool results not fed back: %v", second)
+	}
+	// Reset restores preset instructions but keeps the chosen model.
+	action(t, s, "resetAgent", Request{AgentID: "scout"})
+	a, _ := agentByID(ptr(s.Store.Snapshot()), "scout")
+	if a.System == "custom instructions" || a.ModelID != mid {
+		t.Fatal("reset mishandled")
+	}
+	action(t, s, "deleteModel", Request{ModelID: mid})
+	if a, _ = agentByID(ptr(s.Store.Snapshot()), "scout"); a.ModelID != "" {
+		t.Fatal("dangling model reference")
+	}
+}
+
+func ptr(st State) *State { return &st }
+
+func TestAnthropicAndGeminiProtocolRoundTrip(t *testing.T) {
+	s, pid := fixture(t)
+	t.Setenv("DBA_TEST_KEY", "k")
+	action(t, s, "saveModel", Request{Model: ModelProfile{Name: "claude", Protocol: "anthropic", BaseURL: "https://api.anthropic.com/v1", Model: "claude-opus-5-5", APIKeyEnv: "DBA_TEST_KEY"}})
+	seen := fakeModel(t, `{"stop_reason":"tool_use","content":[{"type":"text","text":"看一下任务。"},{"type":"tool_use","id":"tu1","name":"list_jobs","input":{}}]}`, `{"stop_reason":"end_turn","content":[{"type":"text","text":"没有任务。"}]}`)
+	action(t, s, "message", Request{ProjectID: pid, AgentID: "operator", Message: "任务情况？"})
+	first, second := (*seen)[0], (*seen)[1]
+	if first["_path"] != "/v1/messages" || first["_key"] != "k" || first["system"] == nil || first["max_tokens"] == nil || len(first["tools"].([]any)) != 4 {
+		t.Fatalf("invalid anthropic request: %v", first)
+	}
+	msgs := second["messages"].([]any)
+	result := msgs[2].(map[string]any)["content"].([]any)[0].(map[string]any)
+	if len(msgs) != 3 || msgs[1].(map[string]any)["role"] != "assistant" || result["type"] != "tool_result" || result["tool_use_id"] != "tu1" {
+		t.Fatalf("anthropic tool_result not shaped: %v", msgs)
+	}
+	if m := s.Store.Snapshot().Projects[0].Messages; m[1].Content != "没有任务。" || m[1].Trace[0].Tool != "list_jobs" {
+		t.Fatalf("anthropic reply lost: %#v", m)
+	}
+
+	action(t, s, "saveModel", Request{Model: ModelProfile{Name: "gemini", Protocol: "gemini", BaseURL: "https://generativelanguage.googleapis.com/v1beta", Model: "gemini-x", APIKeyEnv: "DBA_TEST_KEY"}})
+	gid := s.Store.Snapshot().Settings.Models[1].ID
+	action(t, s, "saveAgent", Request{Agent: Agent{ID: "pipeline", System: "x", ModelID: gid, MaxSteps: 2}})
+	seen = fakeModel(t, `{"candidates":[{"finishReason":"STOP","content":{"parts":[{"functionCall":{"name":"get_pipeline","args":{}}}]}}]}`, `{"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"流程只有一步。"}]}}]}`)
+	action(t, s, "message", Request{ProjectID: pid, AgentID: "pipeline", Message: "审阅流程"})
+	first, second = (*seen)[0], (*seen)[1]
+	if first["_path"] != "/v1beta/models/gemini-x:generateContent" || first["_goog"] != "k" || first["system_instruction"] == nil {
+		t.Fatalf("invalid gemini request: %v", first)
+	}
+	contents := second["contents"].([]any)
+	part := contents[2].(map[string]any)["parts"].([]any)[0].(map[string]any)
+	if len(contents) != 3 || contents[1].(map[string]any)["role"] != "model" || part["functionResponse"] == nil {
+		t.Fatalf("gemini functionResponse not shaped: %v", contents)
+	}
+	if m := s.Store.Snapshot().Projects[0].Messages; m[3].Content != "流程只有一步。" || !strings.Contains(m[3].Trace[0].Result, "user workflow") {
+		t.Fatalf("gemini reply lost: %#v", m)
+	}
+}
+
+func TestSchemaOneMigration(t *testing.T) {
+	dir := t.TempDir()
+	legacy := `{"schema":1,"projects":[{"id":"p","name":"old","messages":[{"role":"user","content":"hi"}]}],"settings":{"intervalSeconds":60,"maxRetries":3,"modelUrl":"https://old.example/v1","model":"old-model","apiKeyEnv":"OLD_KEY"}}`
+	if e := os.WriteFile(filepath.Join(dir, "workbench.json"), []byte(legacy), 0600); e != nil {
+		t.Fatal(e)
+	}
+	store, e := Open(dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	st := store.Snapshot()
+	if st.Schema != SchemaVersion || len(st.Settings.Models) != 1 || st.Settings.Models[0].Protocol != "openai" || st.Settings.Models[0].Model != "old-model" || st.Settings.Models[0].APIKeyEnv != "OLD_KEY" {
+		t.Fatalf("legacy model not migrated: %#v", st.Settings)
+	}
+	if len(st.Settings.Agents) != len(presetAgents) || st.Projects[0].Messages[0].Agent != "assistant" {
+		t.Fatalf("presets or message tags missing: %#v", st.Settings.Agents)
 	}
 }

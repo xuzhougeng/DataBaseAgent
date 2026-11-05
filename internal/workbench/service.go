@@ -33,28 +33,32 @@ func NewService(store *Store) *Service {
 func (s *Service) Stop() { s.cancel() }
 
 type Request struct {
-	ProjectID   string      `json:"projectId"`
-	CandidateID string      `json:"candidateId"`
-	JobID       string      `json:"jobId"`
-	ServerID    string      `json:"serverId"`
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Organism    string      `json:"organism"`
-	Assay       string      `json:"assay"`
-	Criteria    string      `json:"criteria"`
-	Query       string      `json:"query"`
-	Source      string      `json:"source"`
-	Limit       int         `json:"limit"`
-	Decision    string      `json:"decision"`
-	Note        string      `json:"note"`
-	Groups      string      `json:"groups"`
-	DownloadURL string      `json:"downloadUrl"`
-	Accession   string      `json:"accession"`
-	Message     string      `json:"message"`
-	Pipeline    Pipeline    `json:"pipeline"`
-	Server      Server      `json:"server"`
-	Candidates  []Candidate `json:"candidates"`
-	Settings    Settings    `json:"settings"`
+	ProjectID   string       `json:"projectId"`
+	CandidateID string       `json:"candidateId"`
+	JobID       string       `json:"jobId"`
+	ServerID    string       `json:"serverId"`
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	Organism    string       `json:"organism"`
+	Assay       string       `json:"assay"`
+	Criteria    string       `json:"criteria"`
+	Query       string       `json:"query"`
+	Source      string       `json:"source"`
+	Limit       int          `json:"limit"`
+	Decision    string       `json:"decision"`
+	Note        string       `json:"note"`
+	Groups      string       `json:"groups"`
+	DownloadURL string       `json:"downloadUrl"`
+	Accession   string       `json:"accession"`
+	Message     string       `json:"message"`
+	Pipeline    Pipeline     `json:"pipeline"`
+	Server      Server       `json:"server"`
+	Candidates  []Candidate  `json:"candidates"`
+	Settings    Settings     `json:"settings"`
+	AgentID     string       `json:"agentId"`
+	ModelID     string       `json:"modelId"`
+	Agent       Agent        `json:"agent"`
+	Model       ModelProfile `json:"model"`
 }
 
 func decode(raw json.RawMessage) (Request, error) {
@@ -75,7 +79,7 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 	case "reviewAgent":
 		return nil, s.AgentReview(ctx, r.ProjectID, r.CandidateID)
 	case "message":
-		return nil, s.Chat(ctx, r.ProjectID, r.Message)
+		return nil, s.Chat(ctx, r.ProjectID, r.AgentID, r.Message)
 	case "tick":
 		return nil, s.Tick(ctx)
 	}
@@ -211,19 +215,80 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 			if v.IntervalSeconds < 10 || v.IntervalSeconds > 86400 || v.MaxRetries < 0 || v.MaxRetries > 10 {
 				return errors.New("巡检间隔需为 10–86400 秒，重试次数需为 0–10")
 			}
-			if v.ModelURL != "" {
-				if e := validHTTPURL(v.ModelURL); e != nil {
-					return e
-				}
+			st.Settings.Paused, st.Settings.IntervalSeconds, st.Settings.MaxRetries = v.Paused, v.IntervalSeconds, v.MaxRetries
+			event(st, "", "", "user", "巡检设置已更新", fmt.Sprintf("每 %d 秒巡检，最多重试 %d 次", v.IntervalSeconds, v.MaxRetries))
+		case "saveModel":
+			v := r.Model
+			v.Name, v.Model, v.APIKeyEnv = strings.TrimSpace(v.Name), strings.TrimSpace(v.Model), strings.TrimSpace(v.APIKeyEnv)
+			if v.Name == "" || v.Model == "" || !protocols[v.Protocol] {
+				return errors.New("请填写模型名称、模型 ID，并选择协议")
 			}
-			if v.APIKeyEnv == "" {
-				v.APIKeyEnv = "DBA_MODEL_API_KEY"
+			if e := validHTTPURL(v.BaseURL); e != nil {
+				return e
 			}
-			if !regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`).MatchString(v.APIKeyEnv) {
+			if v.APIKeyEnv != "" && !regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`).MatchString(v.APIKeyEnv) {
 				return errors.New("API Key 环境变量名无效")
 			}
-			st.Settings = v
-			event(st, "", "", "user", "Agent 设置已更新", fmt.Sprintf("每 %d 秒巡检，最多重试 %d 次", v.IntervalSeconds, v.MaxRetries))
+			replaced := false
+			for i := range st.Settings.Models {
+				if st.Settings.Models[i].ID == v.ID {
+					st.Settings.Models[i] = v
+					replaced = true
+				}
+			}
+			if !replaced {
+				v.ID = id("model")
+				st.Settings.Models = append(st.Settings.Models, v)
+			}
+			event(st, "", "", "user", "模型配置已保存", v.Name+" · "+v.Protocol+" · "+v.Model)
+		case "deleteModel":
+			kept := []ModelProfile{}
+			for _, m := range st.Settings.Models {
+				if m.ID != r.ModelID {
+					kept = append(kept, m)
+				}
+			}
+			if len(kept) == len(st.Settings.Models) {
+				return errors.New("模型不存在")
+			}
+			st.Settings.Models = kept
+			for i := range st.Settings.Agents {
+				if st.Settings.Agents[i].ModelID == r.ModelID {
+					st.Settings.Agents[i].ModelID = ""
+				}
+			}
+			event(st, "", "", "user", "模型配置已删除", r.ModelID)
+		case "saveAgent":
+			v := r.Agent
+			a, e := agentByID(st, v.ID)
+			if e != nil {
+				return e
+			}
+			if strings.TrimSpace(v.System) == "" || len(v.System) > 8000 || v.MaxSteps < 1 || v.MaxSteps > 20 {
+				return errors.New("请填写不超过 8000 字节的指令，步数上限需为 1–20")
+			}
+			if v.ModelID != "" {
+				found := false
+				for _, m := range st.Settings.Models {
+					found = found || m.ID == v.ModelID
+				}
+				if !found {
+					return errors.New("所选模型不存在")
+				}
+			}
+			a.System, a.ModelID, a.MaxSteps = strings.TrimSpace(v.System), v.ModelID, v.MaxSteps
+			event(st, "", "", "user", "Agent 配置已保存", a.Name)
+		case "resetAgent":
+			a, e := agentByID(st, r.AgentID)
+			if e != nil {
+				return e
+			}
+			for _, p := range presetAgents {
+				if p.ID == a.ID {
+					a.System, a.MaxSteps = p.System, p.MaxSteps
+				}
+			}
+			event(st, "", "", "user", "Agent 指令已恢复默认", a.Name)
 		default:
 			return errors.New("未知操作")
 		}

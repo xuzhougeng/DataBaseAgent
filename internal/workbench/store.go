@@ -34,11 +34,26 @@ func Open(root string) (*Store, error) {
 	if err = os.MkdirAll(abs, 0700); err != nil {
 		return nil, err
 	}
-	s := &Store{root: abs, state: State{Schema: SchemaVersion, Projects: []Project{}, Servers: []Server{}, Jobs: []Job{}, Artifacts: []Artifact{}, Events: []Event{}, Settings: Settings{IntervalSeconds: 60, MaxRetries: 3, APIKeyEnv: "DBA_MODEL_API_KEY"}}}
+	s := &Store{root: abs, state: State{Schema: SchemaVersion, Projects: []Project{}, Servers: []Server{}, Jobs: []Job{}, Artifacts: []Artifact{}, Events: []Event{}, Settings: Settings{IntervalSeconds: 60, MaxRetries: 3, Models: []ModelProfile{}}}}
 	b, err := os.ReadFile(filepath.Join(abs, "workbench.json"))
 	if err == nil {
 		if err = json.Unmarshal(b, &s.state); err != nil {
 			return nil, fmt.Errorf("工作空间文件损坏，已保留原文件: %w", err)
+		}
+		if s.state.Schema == 1 { // v0.1: single flat Chat Completions model, untagged messages
+			var old struct {
+				Settings struct{ ModelURL, Model, APIKeyEnv string } `json:"settings"`
+			}
+			_ = json.Unmarshal(b, &old)
+			if old.Settings.Model != "" {
+				s.state.Settings.Models = []ModelProfile{{ID: "model_default", Name: "默认模型", Protocol: "openai", BaseURL: old.Settings.ModelURL, Model: old.Settings.Model, APIKeyEnv: old.Settings.APIKeyEnv}}
+			}
+			for i := range s.state.Projects {
+				for k := range s.state.Projects[i].Messages {
+					s.state.Projects[i].Messages[k].Agent = "assistant"
+				}
+			}
+			s.state.Schema = SchemaVersion
 		}
 		if s.state.Schema != SchemaVersion {
 			return nil, fmt.Errorf("不支持工作空间格式 %d", s.state.Schema)
@@ -46,6 +61,10 @@ func Open(root string) (*Store, error) {
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
+	if s.state.Settings.Models == nil {
+		s.state.Settings.Models = []ModelProfile{}
+	}
+	s.state.Settings.Agents = withPresets(s.state.Settings.Agents)
 	return s, nil
 }
 

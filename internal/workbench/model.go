@@ -2,7 +2,7 @@ package workbench
 
 import "time"
 
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 type State struct {
 	Schema    int        `json:"schema"`
@@ -142,17 +142,50 @@ type Event struct {
 }
 
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-	At      string `json:"at"`
+	Role    string  `json:"role"`
+	Agent   string  `json:"agent"`
+	Content string  `json:"content"`
+	Trace   []Trace `json:"trace,omitempty"`
+	At      string  `json:"at"`
 }
+
+// Trace records one tool invocation inside an agent loop step.
+type Trace struct {
+	Tool   string `json:"tool"`
+	Args   string `json:"args"`
+	Result string `json:"result"`
+	Error  bool   `json:"error,omitempty"`
+	Ms     int64  `json:"ms"`
+}
+
+// ModelProfile is one LLM endpoint. Protocol: openai (Chat Completions 兼容) | anthropic (Messages) | gemini (generateContent).
+type ModelProfile struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Protocol  string `json:"protocol"`
+	BaseURL   string `json:"baseUrl"`
+	Model     string `json:"model"`
+	APIKeyEnv string `json:"apiKeyEnv"`
+}
+
+// Agent is a preset persona: instructions + least-privilege tool set + chosen model.
+type Agent struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Icon        string   `json:"icon"`
+	Description string   `json:"description"`
+	System      string   `json:"system"`
+	Tools       []string `json:"tools"`
+	ModelID     string   `json:"modelId"`
+	MaxSteps    int      `json:"maxSteps"`
+}
+
 type Settings struct {
-	Paused          bool   `json:"paused"`
-	IntervalSeconds int    `json:"intervalSeconds"`
-	MaxRetries      int    `json:"maxRetries"`
-	ModelURL        string `json:"modelUrl"`
-	Model           string `json:"model"`
-	APIKeyEnv       string `json:"apiKeyEnv"`
+	Paused          bool           `json:"paused"`
+	IntervalSeconds int            `json:"intervalSeconds"`
+	MaxRetries      int            `json:"maxRetries"`
+	Models          []ModelProfile `json:"models"`
+	Agents          []Agent        `json:"agents"`
 }
 
 func now() string { return time.Now().UTC().Format(time.RFC3339) }
