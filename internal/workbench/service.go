@@ -59,6 +59,7 @@ type Request struct {
 	ModelID     string       `json:"modelId"`
 	Agent       Agent        `json:"agent"`
 	Model       ModelProfile `json:"model"`
+	APIKey      *string      `json:"apiKey,omitempty"` // omitted keeps the stored key; empty removes it
 }
 
 func decode(raw json.RawMessage) (Request, error) {
@@ -83,6 +84,7 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 	case "tick":
 		return nil, s.Tick(ctx)
 	}
+	var newKeyRef, oldKeyRef string
 	err = s.Store.Update(func(st *State) error {
 		switch action {
 		case "createProject":
@@ -219,6 +221,7 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 			event(st, "", "", "user", "巡检设置已更新", fmt.Sprintf("每 %d 秒巡检，最多重试 %d 次", v.IntervalSeconds, v.MaxRetries))
 		case "saveModel":
 			v := r.Model
+			v.APIKeyRef = ""
 			v.Name, v.Model, v.APIKeyEnv = strings.TrimSpace(v.Name), strings.TrimSpace(v.Model), strings.TrimSpace(v.APIKeyEnv)
 			if v.Name == "" || v.Model == "" || !protocols[v.Protocol] {
 				return errors.New("请填写模型名称、模型 ID，并选择协议")
@@ -226,14 +229,30 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 			if e := validHTTPURL(v.BaseURL); e != nil {
 				return e
 			}
-			if v.APIKeyEnv != "" && !regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`).MatchString(v.APIKeyEnv) {
+			if r.APIKey != nil {
+				v.APIKeyEnv = ""
+				if key := strings.TrimSpace(*r.APIKey); key != "" {
+					ref, err := s.Store.saveModelKey(key)
+					newKeyRef = ref
+					if err != nil {
+						return err
+					}
+					v.APIKeyRef = newKeyRef
+				}
+			} else if v.APIKeyEnv != "" && !regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`).MatchString(v.APIKeyEnv) {
 				return errors.New("API Key 环境变量名无效")
 			}
 			replaced := false
 			for i := range st.Settings.Models {
 				if st.Settings.Models[i].ID == v.ID {
+					if r.APIKey == nil {
+						v.APIKeyRef = st.Settings.Models[i].APIKeyRef
+					} else {
+						oldKeyRef = st.Settings.Models[i].APIKeyRef
+					}
 					st.Settings.Models[i] = v
 					replaced = true
+					break
 				}
 			}
 			if !replaced {
@@ -246,6 +265,8 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 			for _, m := range st.Settings.Models {
 				if m.ID != r.ModelID {
 					kept = append(kept, m)
+				} else {
+					oldKeyRef = m.APIKeyRef
 				}
 			}
 			if len(kept) == len(st.Settings.Models) {
@@ -294,6 +315,13 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 		}
 		return nil
 	})
+	// A new credential gets its own reference, so a failed workspace write leaves
+	// the previous credential usable and never points at an uncommitted key.
+	if err != nil {
+		s.Store.deleteModelKey(newKeyRef)
+	} else {
+		s.Store.deleteModelKey(oldKeyRef)
+	}
 	return nil, err
 }
 

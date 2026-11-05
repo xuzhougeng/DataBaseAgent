@@ -10,7 +10,7 @@
   <img alt="Wails v3" src="https://img.shields.io/badge/Wails-v3.1-DF0000">
   <img alt="Platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-4c8a6a">
   <img alt="LLM protocols" src="https://img.shields.io/badge/LLM%20protocols-OpenAI%20%7C%20Anthropic%20%7C%20Gemini-6f42c1">
-  <img alt="Runtime deps" src="https://img.shields.io/badge/runtime%20deps-0%20npm%20%2F%201%20Go-informational">
+  <img alt="No npm dependencies" src="https://img.shields.io/badge/frontend-0%20npm%20dependencies-informational">
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 
 DBA turns a research question into a reproducible dataset. You define the topic and inclusion criteria; DBA runs broad literature and repository searches, lets a reviewer agent propose include/exclude decisions backed by verbatim evidence, locks an immutable processing pipeline, dispatches jobs to your Linux servers over SSH, supervises them with bounded automatic recovery, and archives every output locally with SHA-256 verification and a machine-readable provenance manifest.
 
-Everything runs on your machine. State is a single atomically-written JSON file; credentials never touch disk; the LLM only ever reads project data through scoped tools and never executes anything.
+Everything runs on your machine. DBA writes workspace state to a single JSON file atomically and saves API keys in the system credential store. The LLM reads project data through scoped, read-only tools.
 
 <p align="center"><img src="assets/DBA-overview.jpg" width="960" alt="DBA project overview in English for the GPSAdb 2.0 SK-N-SH perturbation dataset archive"></p>
 
@@ -83,7 +83,7 @@ Everything runs on your machine. State is a single atomically-written JSON file;
 - **Supervised remote execution** — idempotent submission markers, durable exit codes, PID liveness checks, transient-failure classification, exponential back-off, help requests with resume-from-phase.
 - **Verified archive** — per-file SHA-256, resumable transfer with `.partial` files, 100 GiB per-file ceiling, path confinement on both ends, `run_manifest.json` provenance.
 - **Agent team** — five preset personas with distinct icons, tool scopes and models; a tool-use loop with step budgets, forced final answers and a persisted trace of every call.
-- **Provider-agnostic LLM layer** — one neutral conversation model, three wire protocols, per-agent model selection, keys read from environment variables only.
+- **Provider-agnostic LLM layer** — one neutral conversation model, three wire protocols, per-agent model selection and direct API key entry.
 - **Local & portable** — single binary, embedded assets, no database server, works offline except for discovery and model calls.
 
 ## Agents
@@ -106,7 +106,7 @@ Each agent runs a bounded loop: *model → tool calls → results → model*, up
 | `anthropic` — Messages | Anthropic API and compatible proxies | `{base}/messages` |
 | `gemini` — generateContent | Google AI Studio / Gemini API | `{base}/models/{model}:generateContent` |
 
-Add any number of model profiles in **Preferences**, then pick one per agent. API keys are referenced by environment-variable name and read at request time; local servers may run without a key. See [docs/models.md](docs/models.md).
+Add model profiles in **Preferences** and enter the API key directly. Leave the key blank for services that run without authentication. Existing profiles can still read keys from their configured environment variables. [Model provider guide](docs/models.md)
 
 ## Quick start
 

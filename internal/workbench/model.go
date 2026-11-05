@@ -166,6 +166,7 @@ type ModelProfile struct {
 	BaseURL   string `json:"baseUrl"`
 	Model     string `json:"model"`
 	APIKeyEnv string `json:"apiKeyEnv"`
+	APIKeyRef string `json:"apiKeyRef,omitempty"`
 }
 
 // Agent is a preset persona: instructions + least-privilege tool set + chosen model.

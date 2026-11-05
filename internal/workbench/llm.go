@@ -39,19 +39,13 @@ type Reply struct {
 var protocols = map[string]bool{"openai": true, "anthropic": true, "gemini": true}
 
 func modelReady(m ModelProfile) bool {
-	return m.BaseURL != "" && m.Model != "" && (m.APIKeyEnv == "" || os.Getenv(m.APIKeyEnv) != "")
+	return m.BaseURL != "" && m.Model != "" && (m.APIKeyRef != "" || m.APIKeyEnv == "" || os.Getenv(m.APIKeyEnv) != "")
 }
 
 // complete runs one model call. final=true keeps tool definitions in context but forbids further calls.
-func complete(ctx context.Context, m ModelProfile, system string, turns []Turn, tools []ToolDef, final bool) (Reply, error) {
+func complete(ctx context.Context, m ModelProfile, key, system string, turns []Turn, tools []ToolDef, final bool) (Reply, error) {
 	if m.BaseURL == "" || m.Model == "" {
 		return Reply{}, errors.New("请先在偏好设置中添加模型，并为 Agent 选择模型")
-	}
-	key := ""
-	if m.APIKeyEnv != "" {
-		if key = os.Getenv(m.APIKeyEnv); key == "" {
-			return Reply{}, fmt.Errorf("环境变量 %s 未设置；凭据不写入项目文件", m.APIKeyEnv)
-		}
 	}
 	base := strings.TrimRight(m.BaseURL, "/")
 	switch m.Protocol {
@@ -64,7 +58,7 @@ func complete(ctx context.Context, m ModelProfile, system string, turns []Turn, 
 	}
 }
 
-func postJSON(ctx context.Context, url string, headers map[string]string, body any, out any) error {
+func postJSON(ctx context.Context, url, key string, headers map[string]string, body any, out any) error {
 	b, _ := json.Marshal(body)
 	req, e := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
 	if e != nil {
@@ -84,7 +78,11 @@ func postJSON(ctx context.Context, url string, headers map[string]string, body a
 		return e
 	}
 	if res.StatusCode != 200 {
-		return fmt.Errorf("模型服务返回 HTTP %d：%s", res.StatusCode, clip(string(data), 300))
+		detail := string(data)
+		if key != "" {
+			detail = strings.ReplaceAll(detail, key, "[redacted]")
+		}
+		return fmt.Errorf("模型服务返回 HTTP %d：%s", res.StatusCode, clip(detail, 300))
 	}
 	return json.Unmarshal(data, out)
 }
@@ -168,7 +166,7 @@ func openaiCall(ctx context.Context, base, key, model, system string, turns []Tu
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	if e := postJSON(ctx, base+"/chat/completions", headers, body, &res); e != nil {
+	if e := postJSON(ctx, base+"/chat/completions", key, headers, body, &res); e != nil {
 		return Reply{}, e
 	}
 	if len(res.Choices) == 0 {
@@ -236,7 +234,7 @@ func anthropicCall(ctx context.Context, base, key, model, system string, turns [
 			Input json.RawMessage `json:"input"`
 		} `json:"content"`
 	}
-	if e := postJSON(ctx, base+"/messages", map[string]string{"x-api-key": key, "anthropic-version": "2023-06-01"}, body, &res); e != nil {
+	if e := postJSON(ctx, base+"/messages", key, map[string]string{"x-api-key": key, "anthropic-version": "2023-06-01"}, body, &res); e != nil {
 		return Reply{}, e
 	}
 	r := Reply{Stop: "end_turn"}
@@ -320,7 +318,7 @@ func geminiCall(ctx context.Context, base, key, model, system string, turns []Tu
 			} `json:"content"`
 		} `json:"candidates"`
 	}
-	if e := postJSON(ctx, base+"/models/"+model+":generateContent", map[string]string{"x-goog-api-key": key}, body, &res); e != nil {
+	if e := postJSON(ctx, base+"/models/"+model+":generateContent", key, map[string]string{"x-goog-api-key": key}, body, &res); e != nil {
 		return Reply{}, e
 	}
 	if len(res.Candidates) == 0 {

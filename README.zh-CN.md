@@ -78,7 +78,7 @@ Agent 采用主流的工具调用循环：模型根据对话决定调用哪些�
 
 预设五个角色，工具范围固定、指令和模型可改：项目助手（全局解释）、检索策略师（改进检索式）、复核员（纳入建议与证据，也负责批量复核）、流程顾问（审阅步骤与命令）、运维巡检员（读取日志诊断失败）。在右侧栏切换角色对话；任务详情和求助请求提供“让运维巡检员诊断”。
 
-在偏好设置页添加模型：选择协议、填写 API 基础地址、模型 ID 和 API Key 环境变量名（本地服务可留空）。支持三种协议：OpenAI Chat Completions 兼容（追加 `/chat/completions`，涵盖 DeepSeek、Qwen、Ollama、vLLM 等）、Anthropic Messages（追加 `/messages`）和 Google Gemini（追加 `/models/{模型}:generateContent`）。每个 Agent 可选择不同模型，未选择时使用列表中的第一个。密钥只从进程环境读取，不写入项目文件，例如先设置 `$env:DBA_MODEL_API_KEY` 再从同一终端启动应用。
+在偏好设置页添加模型时，选择协议并直接填写 API 基础地址、模型 ID 和 API Key。无需认证的服务可将密钥留空。API Key 保存在系统凭据库，已有模型仍可读取原先配置的环境变量。支持 OpenAI Chat Completions 兼容协议（涵盖 DeepSeek、Qwen、Ollama、vLLM 等）、Anthropic Messages 和 Google Gemini。每个 Agent 可选择不同模型，未选择时使用列表中的第一个。[模型配置指南](docs/models.md)
 
 检索和模型 HTTP 请求遵循启动进程的 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量。GitHub 操作及构建脚本使用 `http://127.0.0.1:7897` 代理。SSH 采用本机密钥或 SSH Agent，强制校验已知主机，不支持交互式密码输入。
 
