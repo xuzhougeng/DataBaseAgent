@@ -1,96 +1,179 @@
-# DataBaseAgent（DBA）
+<h1 align="center">DataBaseAgent (DBA)</h1>
 
-基于 **Wails v3.1.0 + Go + 原生 HTML/CSS/JavaScript** 的本地主题数据库构建工作台。九个页面沿用提供的设计包：所有项目、项目概览、主题与检索、数据复核、处理流程、运行任务、服务器资源、数据与产物、Agent 中心。
+<p align="center">
+  A local-first, human-in-the-loop workbench for building curated research datasets —<br>
+  from literature discovery to remote processing and checksum-verified archives.
+</p>
 
-## 运行与构建
+<p align="center">
+  <img alt="Go 1.26" src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white">
+  <img alt="Wails v3" src="https://img.shields.io/badge/Wails-v3.1-DF0000">
+  <img alt="Platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-4c8a6a">
+  <img alt="LLM protocols" src="https://img.shields.io/badge/LLM%20protocols-OpenAI%20%7C%20Anthropic%20%7C%20Gemini-6f42c1">
+  <img alt="Runtime deps" src="https://img.shields.io/badge/runtime%20deps-0%20npm%20%2F%201%20Go-informational">
+</p>
 
-从源码构建需要 Go 1.26+；前端没有 npm 依赖，静态资源直接嵌入可执行文件。远程执行在任何平台都需要系统 `ssh` 客户端（Windows 为内置 OpenSSH）。
+<p align="center">
+  <a href="README.zh-CN.md">简体中文</a> ·
+  <a href="docs/architecture.md">Architecture</a> ·
+  <a href="docs/agents.md">Agents</a> ·
+  <a href="docs/models.md">Model Providers</a> ·
+  <a href="docs/pipelines.md">Pipelines & Remote Execution</a> ·
+  <a href="docs/build.md">Build & Install</a>
+</p>
 
-| 平台 | 运行时依赖 | 本机构建额外依赖 | 产物 |
+---
+
+DBA turns a research question into a reproducible dataset. You define the topic and inclusion criteria; DBA runs broad literature and repository searches, lets a reviewer agent propose include/exclude decisions backed by verbatim evidence, locks an immutable processing pipeline, dispatches jobs to your Linux servers over SSH, supervises them with bounded automatic recovery, and archives every output locally with SHA-256 verification and a machine-readable provenance manifest.
+
+Everything runs on your machine. State is a single atomically-written JSON file; credentials never touch disk; the LLM only ever reads project data through scoped tools and never executes anything.
+
+<p align="center"><img src="outputs/DBA-overview.jpg" width="820" alt="DBA workbench overview"></p>
+
+## Design principles
+
+| Principle | What it means in practice |
+| --- | --- |
+| **Human gates on every irreversible step** | Inclusion decisions, sample grouping, pipeline changes and job resumption are user actions. Agents suggest; they never decide. |
+| **Evidence or it did not happen** | A reviewer suggestion is only stored if its quoted evidence appears verbatim in the title or abstract; otherwise it is downgraded to *uncertain*. |
+| **Immutable execution snapshots** | A job carries a frozen copy of its pipeline version, input record and server. Editing the draft never alters running or past jobs. |
+| **Bounded, observable recovery** | Only a short allow-list of network-class failures is retried, with exponential back-off and a hard cap. Everything else — unknown state, command errors, exhausted retries — becomes a help request with the full log attached. |
+| **Least-privilege agents** | Each preset agent has a fixed set of read-only tools scoped to the current project. Tool results are treated as untrusted data. |
+| **Local, atomic, inspectable state** | One `workbench.json`, written via temp-file + rename with transactional rollback; results live in plain directories with per-file checksums and a `run_manifest.json`. |
+
+## How it works
+
+```
+ ┌──────────┐   ┌─────────────┐   ┌──────────────┐   ┌───────────────┐   ┌───────────────┐   ┌──────────────┐
+ │  Define  │ → │ Broad search│ → │ Evidence-    │ → │ Lock pipeline │ → │ Remote jobs   │ → │ Verified     │
+ │  topic   │   │ EPMC/PubMed │   │ backed review│   │ (versioned)   │   │ via SSH, with │   │ local archive│
+ │ criteria │   │ GEO / import│   │ human decides│   │               │   │ supervision   │   │ + manifest   │
+ └──────────┘   └─────────────┘   └──────────────┘   └───────────────┘   └───────────────┘   └──────────────┘
+```
+
+```
+                       ┌──────────────────────────── Desktop (Wails v3) / Browser preview ────────────────────────────┐
+                       │  Vanilla HTML/CSS/JS · 10 views · polls /api/state · zero npm dependencies                   │
+                       └───────────────────────────────────────────┬──────────────────────────────────────────────────┘
+                                                                   │ loopback HTTP, same-origin enforced
+ ┌─────────────────────────────────────────────────────────────────▼─────────────────────────────────────────────────┐
+ │  Go core (internal/workbench)                                                                                     │
+ │                                                                                                                   │
+ │   Store ── atomic JSON state, schema migration, transactional updates                                             │
+ │   Service ─ command dispatcher, validation, quotas, pipeline locking                                              │
+ │   Loop ──── scheduler tick: dispatch · poll · classify failures · retry · sync · escalate                          │
+ │   Discovery  Europe PMC · PubMed · GEO adapters, cursor paging, de-duplication                                     │
+ │   Agents ── bounded tool-use loop · 5 preset personas · 9 read-only tools · per-call trace                         │
+ │   LLM ───── protocol adapters: OpenAI Chat Completions · Anthropic Messages · Google Gemini                        │
+ │   Executor  SSH: idempotent submission, nohup, exit-code marker, resumable transfer, SHA-256                       │
+ └─────────────────────────────────────┬──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │ ssh (BatchMode, strict host keys)    │ HTTPS (proxy-aware)
+                              ┌────────▼────────┐                    ┌────────▼────────┐
+                              │ Linux compute   │                    │ LLM endpoints · │
+                              │ nodes           │                    │ EPMC · NCBI     │
+                              └─────────────────┘                    └─────────────────┘
+```
+
+## Feature highlights
+
+- **Multi-project workspace** — independent topic, search strategy, review ledger, pipeline versions and artifacts per project; cross-project server quotas.
+- **Discovery adapters** — Europe PMC (cursor paging), PubMed (E-utilities), GEO (DataSets) and JSON import; hit count vs. fetched count recorded per search, automatic merge on normalized title / DOI / accession.
+- **Evidence-verified review** — suggestions carry a confidence level and a quote that is checked verbatim against the source text before being stored.
+- **Versioned pipelines** — shell steps with named tools, CPU and concurrency budgets, declared outputs; locking produces an immutable version that jobs bind to.
+- **Supervised remote execution** — idempotent submission markers, durable exit codes, PID liveness checks, transient-failure classification, exponential back-off, help requests with resume-from-phase.
+- **Verified archive** — per-file SHA-256, resumable transfer with `.partial` files, 100 GiB per-file ceiling, path confinement on both ends, `run_manifest.json` provenance.
+- **Agent team** — five preset personas with distinct icons, tool scopes and models; a tool-use loop with step budgets, forced final answers and a persisted trace of every call.
+- **Provider-agnostic LLM layer** — one neutral conversation model, three wire protocols, per-agent model selection, keys read from environment variables only.
+- **Local & portable** — single binary, embedded assets, no database server, works offline except for discovery and model calls.
+
+## Agents
+
+| Agent | Icon | Purpose | Tools |
 | --- | --- | --- | --- |
-| Windows 10/11 | WebView2 Runtime（Windows 11 自带） | 无 | `bin/DBA.exe` |
-| macOS 11+ | 无，使用系统 WebKit | Xcode 命令行工具：`xcode-select --install` | `bin/DBA.app` |
-| Linux | GTK 4 与 WebKitGTK 6.0 | 对应开发包，Debian/Ubuntu 为 `libgtk-4-dev libwebkitgtk-6.0-dev`，Fedora 为 `gtk4-devel webkitgtk6.0-devel` | `bin/DBA` |
+| Project Assistant | 🤖 | Explains the current stage and what to do next | all nine read-only tools |
+| Search Strategist | 🧭 | Evaluates recall/noise and proposes better query expressions | project, searches, candidates |
+| Reviewer | 📋 | Include/exclude suggestions with verbatim evidence; also powers batch review | project, candidates |
+| Pipeline Advisor | 🔀 | Reviews steps, commands, resource budgets and output contracts | project, pipeline, servers, jobs |
+| Operations Inspector | 🔧 | Reads job logs and server state, diagnoses failures, proposes fixes | jobs, servers, events |
 
-macOS / Linux：
+Each agent runs a bounded loop: *model → tool calls → results → model*, up to a configurable step budget, after which a final answer is forced. Every tool invocation (arguments, result excerpt, latency, error flag) is stored with the reply and can be expanded in the chat. See [docs/agents.md](docs/agents.md).
 
-```bash
-scripts/build.sh
-```
+## Model providers
 
-```bash
-scripts/build.sh all
-```
+| Protocol | Works with | Endpoint DBA calls |
+| --- | --- | --- |
+| `openai` — Chat Completions | OpenAI, DeepSeek, Qwen, Ollama, vLLM, OpenRouter, LM Studio, any compatible gateway | `{base}/chat/completions` |
+| `anthropic` — Messages | Anthropic API and compatible proxies | `{base}/messages` |
+| `gemini` — generateContent | Google AI Studio / Gemini API | `{base}/models/{model}:generateContent` |
 
-Windows（PowerShell）：
+Add any number of model profiles in **Preferences**, then pick one per agent. API keys are referenced by environment-variable name and read at request time; local servers may run without a key. See [docs/models.md](docs/models.md).
 
-```powershell
-./scripts/build.ps1
-```
+## Quick start
 
-```powershell
-./scripts/build.ps1 -Target all
-```
+**Prerequisites:** Go 1.26+ to build; an `ssh` client for remote execution; platform WebView (WebView2 on Windows, WebKit on macOS, GTK4 + WebKitGTK on Linux). No Node.js, no C toolchain for Windows builds.
 
-两个脚本都接受 `windows`、`darwin`、`linux`、`all` 目标；`all` 一次产出三个平台的成品。`--debug` / `-Debug` 不剥离符号并启用 Wails 开发特性。`GOARCH=arm64` 可切换 Windows / Linux 架构，`TAGS=gtk3` 让 Linux 成品改用 GTK 3 + WebKit2GTK 4.1（旧发行版没有 WebKitGTK 6.0 时使用）。
-
-安装包：
-
-```bash
-scripts/build.sh setup
-```
-
-```bash
-scripts/build.sh dmg
-```
-
-`setup` 生成 `bin/DBA-Setup.exe`（PowerShell 为 `./scripts/build.ps1 -Target setup`），需要 NSIS 3 的 `makensis` 在 PATH 中：macOS `brew install makensis`，Debian/Ubuntu `apt install nsis`，Windows 从 [nsis.sourceforge.io](https://nsis.sourceforge.io) 安装。安装包按用户安装到 `%LOCALAPPDATA%\Programs\DBA`，不需要管理员权限，写入开始菜单与「应用和功能」卸载项；缺少 WebView2 Runtime 时提示下载；卸载不删除 `%APPDATA%\DataBaseAgent` 工作空间。安装脚本在 `scripts/installer.nsi`。
-
-`dmg` 生成 `bin/DBA.dmg`，内含 `DBA.app` 和 `Applications` 快捷方式，只能在 macOS 上用系统自带的 `hdiutil` 生成。两种安装包都未签名：macOS 需要右键「打开」或 `xattr -dr com.apple.quarantine`，Windows SmartScreen 可能提示「更多信息 → 仍要运行」。
-
-交叉编译规则：Windows 目标是纯 Go，在任何平台都能构建。为非本机平台构建 macOS 或 Linux 时，脚本切换到 Wails 的 purego 后端（`CGO_ENABLED=0 -tags purego`），不需要 C 工具链，但 Wails 将其标为实验特性；正式发布请在目标平台本机构建。`PUREGO=1 scripts/build.sh` 可在本机也省掉 C 工具链。`build.ps1` 在未设置 `HTTPS_PROXY` 时默认走 `http://127.0.0.1:7897` 代理下载模块，`build.sh` 只沿用当前环境变量。
-
-默认工作空间：Windows `%APPDATA%\DataBaseAgent`，macOS `~/Library/Application Support/DataBaseAgent`，Linux `~/.config/DataBaseAgent`，保存 `workbench.json` 与 `projects/<项目ID>/results/<任务ID>/`。用 `-workspace <目录>` 指定其他目录，macOS 为 `open bin/DBA.app --args -workspace <目录>`。同一工作空间的桌面实例复用现有窗口。
-
-浏览器开发预览使用同一个后端和同一套静态资源，任何平台都不需要 C 工具链：
+Run the browser preview (same backend, same UI, no native toolchain):
 
 ```bash
 go run ./cmd/dba-server -port 3415 -workspace .tmp/dev-workspace
 ```
 
-服务仅监听 `127.0.0.1`。请勿让开发服务和桌面端同时使用同一工作空间。原始设计保存在 `design/DBA_design_package/`，包括未经修改的 HTML 和校验清单。
+Build the desktop app for the current platform:
 
-## 使用路径
+```bash
+scripts/build.sh
+```
 
-1. 创建项目，填写主题、纳入标准及偏宽的检索表达式。
-2. 通过 Europe PMC、PubMed 或 GEO 检索，或导入候选 JSON。每次显示命中总数与实际获取数（上限 1000），保存检索历史并合并去重。GEO 结果可能包含 series、sample 或 platform，需要人工筛选。
-3. 在偏好设置中添加模型后让复核员给出复核建议，核对原文证据，再人工纳入或排除。也支持完全人工复核。复核必须填写理由；可补充来源编号、直接下载地址及分组。
-4. 添加 Linux SSH 服务器，先在终端验证免密登录与主机指纹，再在应用中检查连接。填写专用的远程绝对工作目录和 CPU/并发配额。
-5. 定义工具、shell 命令和预期输出文件，锁定流程版本，再把人工纳入的数据加入队列。默认下载步骤使用 `curl` 断点续传，后续处理步骤需由用户定义。
-6. Agent 定期检查进程和退出码，按配额调度任务，识别少量网络类错误并有限重试；其他命令错误、状态不明或连续失败转为求助。结果按清单增量同步，逐文件 SHA-256 校验后归档。
+Windows:
 
-流程命令可以使用 `DBA_ACCESSION`、`DBA_SOURCE_URL`、`DBA_INPUT`、`DBA_OUTPUT`、`DBA_SAMPLE_GROUPS` 和 `DBA_CPUS`。步骤在 `$DBA_OUTPUT` 内顺序运行，错误即停止。输出路径为相对路径，例如 `expression_matrix.tsv`、`qc/report.html`。应用另生成 `run_manifest.json`。
+```powershell
+./scripts/build.ps1
+```
 
-## Agent 与模型
+Installers, cross-compilation and workspace locations are covered in [docs/build.md](docs/build.md).
 
-Agent 采用主流的工具调用循环：模型根据对话决定调用哪些只读工具（项目范围、候选、检索历史、流程、服务器、任务日志、事件），应用执行后把结果回填，循环直到模型给出结论或达到步数上限；每次工具调用的参数、结果与耗时都记录在消息中，可在对话里展开核对。工具只能读取当前项目，模型没有执行命令或修改数据的权限，纳入、分组和流程变更仍由用户确认。
+**First project in five minutes**
 
-预设五个角色，工具范围固定、指令和模型可改：项目助手（全局解释）、检索策略师（改进检索式）、复核员（纳入建议与证据，也负责批量复核）、流程顾问（审阅步骤与命令）、运维巡检员（读取日志诊断失败）。在右侧栏切换角色对话；任务详情和求助请求提供“让运维巡检员诊断”。
+1. Create a project; write the research goal, inclusion criteria and a deliberately broad query.
+2. Run a search against Europe PMC, PubMed or GEO (or import JSON). Hits are merged and de-duplicated.
+3. Add a model in Preferences, let the Reviewer propose decisions, verify the quoted evidence, then include or exclude with a written reason.
+4. Register a Linux server (key-based SSH, strict host checking) and run the connection check.
+5. Define pipeline steps and outputs, lock the version, queue jobs. The scheduler dispatches within quotas, supervises, retries transient failures, escalates the rest, and archives verified outputs.
 
-在偏好设置页添加模型：选择协议、填写 API 基础地址、模型 ID 和 API Key 环境变量名（本地服务可留空）。支持三种协议：OpenAI Chat Completions 兼容（追加 `/chat/completions`，涵盖 DeepSeek、Qwen、Ollama、vLLM 等）、Anthropic Messages（追加 `/messages`）和 Google Gemini（追加 `/models/{模型}:generateContent`）。每个 Agent 可选择不同模型，未选择时使用列表中的第一个。密钥只从进程环境读取，不写入项目文件，例如先设置 `$env:DBA_MODEL_API_KEY` 再从同一终端启动应用。
+Full walkthrough: [docs/workflow.md](docs/workflow.md).
 
-检索和模型 HTTP 请求遵循启动进程的 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量。GitHub 操作及构建脚本使用 `http://127.0.0.1:7897` 代理。SSH 采用本机密钥或 SSH Agent，强制校验已知主机，不支持交互式密码输入。
+## Documentation
 
-## 当前边界
+| Document | Covers |
+| --- | --- |
+| [docs/architecture.md](docs/architecture.md) | Components, data model, job state machine, persistence, security boundaries |
+| [docs/agents.md](docs/agents.md) | Agent loop, presets, tool catalogue, guardrails, trace format, customization |
+| [docs/models.md](docs/models.md) | Protocol adapters, request mapping, keys, proxies, provider recipes |
+| [docs/discovery.md](docs/discovery.md) | Search adapters, paging, limits, de-duplication, import format |
+| [docs/pipelines.md](docs/pipelines.md) | Pipeline contract, environment variables, remote protocol, recovery, sync, manifest |
+| [docs/build.md](docs/build.md) | Platform matrix, build scripts, installers, cross-compilation, workspaces |
+| [docs/workflow.md](docs/workflow.md) | End-to-end user guide, current scope and non-goals |
 
-这是可运行的第一版，使用本地 JSON 原子保存，适合先贯通单服务器闭环。执行器目前支持 Linux SSH，不含 Slurm、容器管理、内存/磁盘硬配额或系统服务。CPU 配额控制提交容量，实际线程数须在工具参数中设置。关闭 DBA 后远端进程继续运行；重新打开后恢复巡检。巡检循环按固定恢复策略工作；Agent 对话只读，不自动改写分析命令。旧版（schema 1）工作空间打开时自动迁移模型配置。
-
-新版本不会自动套用到旧任务；终止或删除远端任务、编辑服务器配置、按时间段穷尽海量检索结果等功能尚未提供。失败后的求助允许补充分组或在远端修复环境；需要修改工具或参数时，应锁定新流程并提交新任务。SSH 远端需要 `sh`、`nohup`、`realpath`、`sha256sum` 和所选工具。原始数据下载由已确认的流程命令完成，不会从任意论文自动推断完整 FASTQ 下载方案。
-
-## 验证
+## Verification
 
 ```bash
 go test ./... && go vet ./... && node --check frontend/workbench.js
 ```
 
-测试覆盖项目隔离、人工纳入门槛、流程与输入快照、跨项目服务器配额、连接失败不重复提交、有限恢复和人工接手、校验与本地归档、重启持久化、损坏文件保护、检索去重与获取上限、模型证据校验、HTTP 来源检查、Agent 工具范围与调用痕迹、三种模型协议的请求与回填格式，以及旧工作空间迁移。自动化测试通过可控执行器验证调度闭环；真实服务器和模型端点仍须使用自己的配置完成联调。
+The suite exercises project isolation, the human-review gate, immutable pipeline snapshots, cross-project server quotas, no-resubmission on lost acknowledgements, bounded recovery and hand-off, transfer recovery without re-execution, restart resumption, persistence rollback and corruption detection, discovery de-duplication and fetch limits, evidence verification, same-origin enforcement, agent tool scoping and tracing, all three model protocols, and schema migration — using a controllable executor and a stubbed HTTP transport. Real servers and model endpoints still need to be validated with your own configuration.
+
+## Scope
+
+This is a working first release aimed at closing the single-server loop end to end. The executor is plain SSH on Linux (no Slurm, containers or memory/disk quotas); CPU budgets govern dispatch capacity, not thread counts. Remote processes keep running when DBA is closed and are re-attached on relaunch. Agents are read-only and never rewrite commands. See [docs/workflow.md#scope-and-non-goals](docs/workflow.md#scope-and-non-goals) for the full list.
+
+## Repository layout
+
+```
+main.go                 Wails desktop entry point (single-instance, workspace flag)
+cmd/dba-server/         Browser preview server bound to 127.0.0.1
+internal/workbench/     Core: store · service · loop · discovery · agent · llm · ssh · http
+frontend/               Embedded UI: index.html · styles.css · workbench.js
+scripts/                build.sh · build.ps1 · installer.nsi
+docs/                   Topic documentation
+design/                 Original design package with checksums
+```
