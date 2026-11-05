@@ -15,12 +15,12 @@ svg{width:16px;height:16px;flex-shrink:0;fill:none;stroke:currentColor;stroke-wi
 h1,h2,h3,h4,p{margin:0}
 .working{cursor:progress}
 
-/* 三栏：导航 / 内容 / Agent */
-.app{display:grid;grid-template-columns:208px minmax(0,1fr) 300px;height:100vh}
+/* 导航 / 主工作区 / 工作进展 */
+.app{display:grid;grid-template-columns:208px minmax(0,1fr) 280px;height:100vh}
 .sidebar{background:var(--side);border-right:1px solid #e0e7e2;padding:20px 12px 16px;display:flex;flex-direction:column;overflow-y:auto}
 main{overflow-y:auto;padding:28px 32px 48px;min-width:0}
 .aside{background:#fcfdfc;border-left:1px solid var(--line);padding:20px 18px;overflow:hidden;display:flex;flex-direction:column;gap:18px}
-/* 右栏：动态区单独滚动，对话区固定在底部 */
+/* 右栏仅展示工作进展；完整对话在独立页面 */
 .aside-feed{flex:1 1 0;min-height:96px;overflow-y:auto}
 .app.aside-hidden{grid-template-columns:208px minmax(0,1fr) 52px}
 .aside.rail{padding:16px 0;align-items:center;gap:8px}
@@ -195,6 +195,55 @@ td.empty{padding:32px}
 .chat-box{border:1px solid #d8e2da;background:#fff;border-radius:7px;padding:8px;display:flex;flex-direction:column;gap:6px}
 .chat-box textarea{border:0;resize:none;height:54px;outline:none;line-height:1.6;font-size:12px;background:none;width:100%}
 .chat-box .button{align-self:flex-end}
+
+/* 独立 AI 助手页面 */
+.assistant-main{display:flex;flex-direction:column;overflow:hidden;padding-bottom:24px}
+.assistant-main>.page-head{flex-shrink:0}
+.assistant-workspace{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.assistant-toolbar{padding:14px 20px;border-bottom:1px solid var(--line);flex-shrink:0}
+.assistant-toolbar .agent-picker{gap:6px}
+.assistant-toolbar .agent-pick{align-items:center;gap:6px;font-size:12px;padding:7px 9px}
+.assistant-context{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;color:var(--muted);font-size:11px;margin-top:12px}
+.assistant-context>span{display:inline-flex;align-items:center;gap:6px;overflow-wrap:anywhere}
+.assistant-context svg{width:13px;height:13px}
+.assistant-workspace .chat-log{flex:1;padding:24px clamp(16px,3vw,40px);gap:24px;scrollbar-gutter:stable}
+.assistant-workspace .msg{width:100%;max-width:880px;align-self:center;background:none;color:var(--ink);padding:0;font-size:14px;white-space:normal}
+.assistant-workspace .msg.me{background:#f1f5f2;border:1px solid #e5ede7;border-radius:10px;padding:12px 16px;width:auto;max-width:85%;align-self:flex-end}
+.message-label{font-size:11px;font-weight:600;color:var(--green);display:flex;align-items:center;gap:12px;margin-bottom:7px}
+.message-label time{color:var(--muted);font-weight:400}
+.message-body{line-height:1.8;overflow-wrap:anywhere}
+.msg.me .message-body{white-space:pre-wrap}
+.message-body p+p,.message-body p+pre,.message-body pre+p{margin-top:12px}
+.message-body h3{font-size:15px;margin:16px 0 8px}
+.message-body ul{padding-left:22px;margin:8px 0}
+.message-body code{font-family:var(--mono);font-size:.9em;background:#f1f5f2;padding:2px 4px;border-radius:3px}
+.message-body pre code{padding:0;background:none}
+.assistant-workspace .msg.thinking{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px}
+.assistant-compose{flex-shrink:0;padding:0 clamp(16px,3vw,40px) 16px}
+.assistant-compose .chat-box{border-radius:10px;padding:12px 14px;box-shadow:0 2px 8px #20332f05}
+.assistant-compose .chat-box:focus-within{border-color:#81ae99}
+.assistant-compose textarea{height:72px;min-height:52px;max-height:180px;font-size:14px;resize:vertical}
+.composer-footer{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.composer-footer>span,.compose-note{font-size:11px;color:var(--muted)}
+.compose-note{margin-top:8px;text-align:center}
+.setup-hint{display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--orange);background:var(--orange-soft);border-radius:7px;padding:10px 12px;margin-bottom:10px;font-size:12px}
+.assistant-welcome{margin:auto;width:min(100%,640px);padding:24px 0;text-align:center}
+.welcome-icon{display:inline-flex;padding:14px;border-radius:16px;background:var(--soft);color:var(--green);margin-bottom:18px}
+.welcome-icon svg{width:28px;height:28px}
+.assistant-welcome h2{font-size:23px;font-weight:600;margin-bottom:10px}
+.assistant-welcome>p{color:var(--muted);font-size:13px;margin:4px 0}
+.prompt-list{display:grid;gap:8px;margin:24px auto 0;text-align:left;max-width:520px}
+.prompt-list button{display:flex;align-items:center;gap:12px;text-align:left;padding:12px 14px;border:1px solid var(--line);border-radius:8px;color:#587565;background:#fbfdfb}
+.prompt-list button:hover{border-color:#a9c6b7;background:var(--soft)}
+.prompt-list span{flex:1;font-size:12px}
+.progress-controls{display:flex;flex-wrap:wrap;gap:8px}
+.run-progress{border:1px solid #cfe2d4;border-radius:8px;padding:12px;background:var(--soft);margin-bottom:20px}
+.run-progress strong{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--green)}
+.run-progress p{font-size:12px;margin:8px 0;overflow-wrap:anywhere}
+.run-progress small{font-size:11px;color:var(--muted)}
+.aside-feed .aside-label{flex-wrap:wrap;gap:4px}
+@media(max-width:1000px){.app{grid-template-columns:176px minmax(0,1fr) 224px}.app.aside-hidden{grid-template-columns:176px minmax(0,1fr) 44px}.assistant-main{padding:20px 16px}.assistant-main .page-head{flex-wrap:wrap}.assistant-toolbar{padding:12px}.aside{padding:16px 12px}}
+@media(max-width:760px){.app,.app.aside-hidden{grid-template-columns:150px minmax(0,1fr)}.aside{display:none}.sidebar{padding:16px 8px}.assistant-main{padding:16px 12px}.assistant-compose{padding:0 12px 12px}.assistant-workspace .chat-log{padding:16px 12px}.composer-footer>span{display:none}.composer-footer{justify-content:flex-end}.assistant-welcome h2{font-size:20px}.assistant-main .page-head{gap:10px;margin-bottom:14px}}
 
 /* Agent 选择、调用痕迹与配置 */
 .agent-picker{display:flex;align-items:center;gap:4px;flex-wrap:wrap}

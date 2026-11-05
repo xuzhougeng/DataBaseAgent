@@ -320,7 +320,7 @@ func TestExportManifestAndLinkBoundaries(t *testing.T) {
 	}
 }
 
-func TestAgentEvidenceAndHumanReviewGate(t *testing.T) {
+func TestAgentReviewSuggestionsRequireVerifiedEvidence(t *testing.T) {
 	s, pid := fixture(t)
 	_ = s.Store.Update(func(st *State) error { st.Projects[0].Candidates[0].Decision = "pending"; return nil })
 	previous := httpClient
@@ -338,7 +338,7 @@ func TestAgentEvidenceAndHumanReviewGate(t *testing.T) {
 	}
 	c := s.Store.Snapshot().Projects[0].Candidates[0]
 	if c.Decision != "pending" || c.Suggestion != "uncertain" || c.Evidence != "" {
-		t.Fatal("unverifiable model output bypassed human gate")
+		t.Fatal("unverifiable batch suggestion changed a decision")
 	}
 }
 
@@ -433,7 +433,7 @@ func TestAnthropicAndGeminiProtocolRoundTrip(t *testing.T) {
 	seen := fakeModel(t, `{"stop_reason":"tool_use","content":[{"type":"text","text":"看一下任务。"},{"type":"tool_use","id":"tu1","name":"list_jobs","input":{}}]}`, `{"stop_reason":"end_turn","content":[{"type":"text","text":"没有任务。"}]}`)
 	action(t, s, "message", Request{ProjectID: pid, AgentID: "operator", Message: "任务情况？"})
 	first, second := (*seen)[0], (*seen)[1]
-	if first["_path"] != "/v1/messages" || first["_key"] != "k" || first["system"] == nil || first["max_tokens"] == nil || len(first["tools"].([]any)) != 4 {
+	if first["_path"] != "/v1/messages" || first["_key"] != "k" || first["system"] == nil || first["max_tokens"] == nil || len(first["tools"].([]any)) != len(presetAgents[4].Tools) {
 		t.Fatalf("invalid anthropic request: %v", first)
 	}
 	msgs := second["messages"].([]any)

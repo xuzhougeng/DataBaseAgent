@@ -43,7 +43,7 @@ func Handler(s *Service, assets fs.FS) http.Handler {
 			for i := range state.Settings.Models {
 				state.Settings.Models[i].APIKeyRef = ""
 			}
-			write(map[string]any{"state": state, "root": s.Store.Root(), "envSet": envSet, "keySaved": keySaved, "ready": ready})
+			write(map[string]any{"state": state, "root": s.Store.Root(), "envSet": envSet, "keySaved": keySaved, "ready": ready, "agentRuns": s.AgentRuns()})
 		case r.Method == "GET" && r.URL.Path == "/api/artifact":
 			text, e := s.PreviewArtifact(r.URL.Query().Get("id"))
 			if e != nil {

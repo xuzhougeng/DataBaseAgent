@@ -11,6 +11,7 @@ type State struct {
 	Jobs      []Job      `json:"jobs"`
 	Artifacts []Artifact `json:"artifacts"`
 	Events    []Event    `json:"events"`
+	Messages  []Message  `json:"messages,omitempty"` // workspace conversation, before a project is selected
 	Settings  Settings   `json:"settings"`
 	LastTick  string     `json:"lastTick"`
 }
@@ -51,6 +52,7 @@ type Candidate struct {
 	Decision    string `json:"decision"`
 	ReviewNote  string `json:"reviewNote"`
 	ReviewedAt  string `json:"reviewedAt"`
+	ReviewedBy  string `json:"reviewedBy,omitempty"`
 	Groups      string `json:"groups"`
 }
 
@@ -147,6 +149,15 @@ type Message struct {
 	Content string  `json:"content"`
 	Trace   []Trace `json:"trace,omitempty"`
 	At      string  `json:"at"`
+}
+
+// AgentRun is transient progress; persisted messages and events survive a restart.
+type AgentRun struct {
+	ProjectID string `json:"projectId"`
+	AgentID   string `json:"agentId"`
+	StartedAt string `json:"startedAt"`
+	Step      int    `json:"step"`
+	Tool      string `json:"tool"`
 }
 
 // Trace records one tool invocation inside an agent loop step.
