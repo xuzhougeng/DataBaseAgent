@@ -73,8 +73,8 @@ function stage(p){if(projectJobs(p.id).some(j=>j.status==='succeeded'))return 5;
 
 function render(){
   const p=current();
-  if(!p&&!['projects','servers','agent','settings'].includes(ui.page))ui.page='projects';
-  const pages={projects:allProjects,overview,search:searchPage,review:reviewPage,workflow:workflowPage,jobs:jobsPage,servers:serversPage,results:resultsPage,agent:agentPage,settings:settingsPage};
+  if(!p&&!['projects','servers','agent','agent-center','settings'].includes(ui.page))ui.page='projects';
+  const pages={projects:allProjects,overview,search:searchPage,review:reviewPage,workflow:workflowPage,jobs:jobsPage,servers:serversPage,results:resultsPage,agent:agentPage,'agent-center':agentCenterPage,settings:settingsPage};
   const body=(pages[ui.page]||allProjects)();// reviewPage may move ui.candidateId, so build it before comparing views
   // ponytail: the whole app is re-rendered from state (polling every 3 s); when the view is unchanged, carry over
   // scroll positions and unsaved field edits so background refreshes neither jump to the top nor wipe input.
@@ -105,6 +105,7 @@ function sidebar(p){
     ${item('results','folder','数据与产物',projectArtifacts().length||'','',!p)}
     <div class="label">${t('工作空间')}</div>
     ${item('servers','server','服务器资源',db.servers.length||'')}
+    ${item('agent-center','agent','Agent 中心')}
     <div class="sidebar-bottom">${item('settings','settings','偏好设置')}<div class="version"><span>v0.2.0 · ${t('本地工作空间')}</span><button class="text-button" onclick="setLang('${lang==='en'?'zh':'en'}')">${lang==='en'?'中文':'English'}</button></div></div></nav>`;
 }
 
@@ -188,37 +189,44 @@ function messageMarkdown(content){
 }
 function agentPage(){
   const p=current(),a=currentAgent(),m=a&&agentModel(a),ready=a&&meta.ready?.[a.id],messages=(p?.messages||db.messages||[]).filter(msg=>msg.agent===a?.id),activeRun=(meta.agentRuns||[]).find(r=>r.projectId===(ui.projectId||'')),sending=ui.sending?.projectId===(ui.projectId||'')&&ui.sending?.agentId===a?.id,busy=sending||activeRun?.agentId===a?.id,blocked=!!activeRun||ui.busy.has('message');
-  return head(t('AI 助手'),t('描述目标，AI 会调用工具完成整个流程。各业务页面可查看结果，也可手工操作。'),btn(t('偏好设置'),"go('settings')",'small','settings'))+`
+  return head(t('AI 助手'),t('描述目标，AI 会调用工具完成整个流程。各业务页面可查看结果，也可手工操作。'),btn(t('Agent 中心'),"go('agent-center')",'small','agent')+btn(t('偏好设置'),"go('settings')",'small','settings'))+`
     <section class="assistant-workspace" aria-label="${t('AI 对话')}">
-      <div class="assistant-toolbar"><div class="agent-picker" role="tablist" aria-label="${t('选择 Agent')}">${agents().map(x=>`<button class="agent-pick ${x.id===a?.id?'active':''}" role="tab" aria-selected="${x.id===a?.id}" title="${esc(t(x.description))}" onclick="chooseAgent('${x.id}')">${I(x.icon)}${esc(t(x.name))}</button>`).join('')}</div><div class="assistant-context"><span>${I('folder')}${esc(p?.name||t('工作空间对话'))}</span><span>${m?esc(m.name+' · '+m.model):t('未配置模型')}</span>${badge(t(ready?'可用':'待配置模型'),ready?'':'orange')}</div></div>
+      <div class="assistant-toolbar"><div class="agent-picker" role="tablist" aria-label="${t('选择 Agent')}">${agents().map(x=>`<button class="agent-pick ${x.id===a?.id?'active':''}" role="tab" aria-selected="${x.id===a?.id}" title="${esc(t(x.description))}" onclick="chooseAgent('${x.id}')">${I(x.icon)}${esc(t(x.name))}</button>`).join('')}</div><div class="assistant-context"><span>${I('folder')}${esc(p?.name||t('工作空间对话'))}</span><span>${m?esc(m.name):t('未配置模型')}</span>${badge(t(ready?'可用':'待配置模型'),ready?'':'orange')}</div></div>
       <div class="chat-log" role="log" aria-label="${t('对话记录')}" aria-live="polite">${messages.length?messages.map(msg=>`<article class="msg ${msg.role==='user'?'me':''}"><div class="message-label">${msg.role==='user'?t('你'):esc(t(a?.name||'Agent'))}<time>${date(msg.at)}</time></div><div class="message-body">${msg.role==='user'?esc(msg.content):messageMarkdown(msg.content)}</div>${trace(msg)}</article>`).join(''):`<div class="assistant-welcome"><span class="welcome-icon">${I('agent')}</span><h2>${t('从一个目标开始')}</h2><p>${esc(t(a?.description||''))}</p><p class="muted">${t('检索、复核、流程配置、运行与归档，都可以在这里推进。')}</p><div class="prompt-list">${agentPrompts.map((prompt,index)=>`<button onclick="usePrompt(${index})">${I(index===0?'flow':index===1?'activity':'folder')}<span>${t(prompt)}</span>${I('arrow')}</button>`).join('')}</div></div>`}${busy?`<div class="msg thinking" role="status">${I('agent')}${activeRun?.tool?t('正在执行 {tool}',{tool:esc(activeRun.tool)}):t('{a} 正在思考，可能会调用工具…',{a:esc(t(a?.name||'Agent'))})}</div>`:''}</div>
-      <div class="assistant-compose">${!ready?`<div class="setup-hint"><span>${t(models().length?'先在偏好设置中为该 Agent 选择可用模型':'先在偏好设置中添加模型')}</span>${btn(t('配置模型'),"go('settings')",'small','settings')}</div>`:''}<div class="chat-box"><textarea id="agent-message" aria-label="${t('向 Agent 提问')}" placeholder="${t('告诉 AI 你的目标或需要修改的内容…')}" ${ready&&!blocked?'':'disabled'} oninput="setChatDraft(this.value)" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendAgent();}">${esc(chatDraft())}</textarea><div class="composer-footer"><span>${t('Enter 发送 · Shift + Enter 换行')}</span>${btn(t(busy?'执行中…':'发送'),'sendAgent()','primary','arrow',!ready||blocked)}</div></div><p class="compose-note">${t('执行记录保存在对话与工作进展中；缺少关键信息时，AI 会在这里询问。')}</p></div>
+      <div class="assistant-compose">${!ready?`<div class="setup-hint"><span>${t(models().length?'先在 Agent 中心右击角色配置可用模型':'先在偏好设置中添加模型')}</span>${btn(t('配置模型'),models().length?"go('agent-center')":"go('settings')",'small','settings')}</div>`:''}<div class="chat-box"><textarea id="agent-message" aria-label="${t('向 Agent 提问')}" placeholder="${t('告诉 AI 你的目标或需要修改的内容…')}" ${ready&&!blocked?'':'disabled'} oninput="setChatDraft(this.value)" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendAgent();}">${esc(chatDraft())}</textarea><div class="composer-footer"><span>${t('Enter 发送 · Shift + Enter 换行')}</span>${btn(t(busy?'执行中…':'发送'),'sendAgent()','primary','arrow',!ready||blocked)}</div></div><p class="compose-note">${t('执行记录保存在对话与工作进展中；缺少关键信息时，AI 会在这里询问。')}</p></div>
     </section>`;
+}
+
+function agentCenterPage(){
+  const helps=helpJobs(),events=db.events.slice(-100).reverse(),s=db.settings,readyCount=agents().filter(a=>meta.ready?.[a.id]).length,cur=currentAgent();
+  return head(t('Agent 中心'),s.paused?t('自动巡检已暂停，远端进程继续运行。'):t('每 {i} 秒巡检远端任务，可恢复错误最多重试 {r} 次；{c}/{n} 个 Agent 已配置模型。',{i:s.intervalSeconds,r:s.maxRetries,c:readyCount,n:agents().length}),btn(t(s.paused?'恢复巡检':'暂停巡检'),'toggleAgent()',s.paused?'primary':'',s.paused?'play':'pause')+btn(t('偏好设置'),"go('settings')",'','settings'))+`<section class="card"><div class="card-head"><h2>${t('Agent 角色')}</h2><small>${t('左键进入 AI 助手对话，右键编辑配置')}</small></div><div class="roster">${agents().map(a=>{const m=agentModel(a);return `<button class="roster-card ${a.id===cur?.id?'active':''}" data-agent-id="${a.id}" title="${t('右击或按 Shift+F10 编辑 Agent')}" onclick="ui.agentId='${a.id}';go('agent')" oncontextmenu="event.preventDefault();agentModal('${a.id}')" onkeydown="if(event.key==='ContextMenu'||event.shiftKey&&event.key==='F10'){event.preventDefault();agentModal('${a.id}')}"><span class="agent-icon">${I(a.icon)}</span><strong>${esc(t(a.name))}</strong><small>${esc(t(a.description))}</small><span class="muted mono">${m?esc(m.name):t('未配置模型')}</span>${badge(t(meta.ready?.[a.id]?'可用':'待配置模型'),meta.ready?.[a.id]?'':'orange')}</button>`;}).join('')}</div></section>
+    <section class="card"><div class="card-head"><h2>${t('求助请求')}</h2>${badge(helps.length?t('{n} 项待处理',{n:helps.length}):t('无'),helps.length?'orange':'gray')}</div>${helps.length?helps.map(j=>`<div class="content-pad"><div class="server-title"><strong class="mono">${esc(j.accession)}</strong><span class="muted">${esc(db.projects.find(p=>p.id===j.projectId)?.name||'')}</span></div><p class="muted">${esc(j.help)}</p>${j.error?`<p class="muted">${esc(j.error)}</p>`:''}<div class="decision">${btn(t('查看证据与处理'),`jobDetail('${j.id}')`,'small','arrow')}${btn(t('让运维巡检员诊断'),`askAgent('operator','${j.id}')`,'small','wrench',!meta.ready?.operator)}</div></div>`).join(''):`<div class="content-pad muted">${t('目前没有需要协助的任务。')}</div>`}</section>
+    <section class="card"><div class="card-head"><h2>${t('操作记录')}</h2><small>${t('最近 {n} 条',{n:events.length})}</small></div>${table(['时间','动作','依据与结果'].map(x=>t(x)),events.map(e=>`<tr><td>${date(e.at)}</td><td>${esc(e.title)}</td><td class="wrap">${esc(e.detail)}${e.jobId?` <button class="text-button" onclick="jobDetail('${e.jobId}')">${t('查看任务')}</button>`:''}</td></tr>`),t('等待第一条记录'))}</section>`;
 }
 
 function settingsPage(){
   const s=db.settings;
-  return head(t('偏好设置'),t('巡检策略、模型端点与 Agent 配置保存在本地工作空间，API Key 保存在系统凭据库。'))+`<section class="card"><div class="card-head"><h2>${t('Agent 巡检')}</h2>${badge(t(s.paused?'已暂停':'运行中'),s.paused?'orange':'')}</div><div class="content-pad"><div class="form-grid">${field(t('巡检间隔（秒）'),'setting-interval',s.intervalSeconds,'input','type="number" min="10" max="86400"')}${field(t('可恢复错误最大重试次数'),'setting-retries',s.maxRetries,'input','type="number" min="0" max="10"')}</div></div><div class="card-foot"><span class="muted">${t('AI 可配置并创建任务；巡检循环按配额执行、恢复并归档结果。')}</span>${btn(t('保存巡检设置'),'saveLoop()','primary small','check')}</div></section>
-    <section class="card"><div class="card-head"><h2>${t('模型')}</h2><button class="text-button" onclick="modelModal()">${I('plus')}${t('添加模型')}</button></div>${table(['名称','协议','模型 ID','端点','API Key',''].map(x=>t(x)),models().map(m=>`<tr><td><strong>${esc(m.name)}</strong></td><td>${esc(t(protocolNames[m.protocol]||m.protocol))}</td><td class="mono">${esc(m.model)}</td><td class="mono wrap url">${esc(m.baseUrl)}</td><td>${modelKeyStatus(m)}</td><td><button class="icon-button" onclick="modelModal('${m.id}')" aria-label="${t('编辑')} ${esc(m.name)}">${I('edit')}</button><button class="icon-button" onclick="deleteModel('${m.id}')" aria-label="${t('删除')} ${esc(m.name)}">${I('trash')}</button></td></tr>`),t('尚未添加模型。添加后即可在下方为每个 Agent 选择模型；未选择的 Agent 使用列表中的第一个。'))}</section>
-    <section class="card"><div class="card-head"><h2>Agent</h2><small>${t('预设角色的工具范围固定；可修改指令、模型与单次对话的工具步数上限')}</small></div>${agents().map(agentCard).join('')}</section>`;
+  return head(t('偏好设置'),t('巡检策略与模型端点保存在本地工作空间；Agent 配置请在 Agent 中心右击角色编辑。API Key 保存在系统凭据库。'))+`<section class="card"><div class="card-head"><h2>${t('Agent 巡检')}</h2>${badge(t(s.paused?'已暂停':'运行中'),s.paused?'orange':'')}</div><div class="content-pad"><div class="form-grid">${field(t('巡检间隔（秒）'),'setting-interval',s.intervalSeconds,'input','type="number" min="10" max="86400"')}${field(t('可恢复错误最大重试次数'),'setting-retries',s.maxRetries,'input','type="number" min="0" max="10"')}</div></div><div class="card-foot"><span class="muted">${t('巡检循环按固定恢复策略调度远端任务；模型只用于建议与对话。')}</span>${btn(t('保存巡检设置'),'saveLoop()','primary small','check')}</div></section>
+    <section class="card"><div class="card-head"><h2>${t('模型')}</h2><button class="text-button model-add" onclick="modelModal()">${I('plus')}${t('添加模型')}</button></div><div class="model-list">${models().map(m=>`<button class="model-item" data-model-id="${m.id}" onclick="modelModal('${m.id}')" aria-label="${t('编辑模型')} ${esc(m.name)}" aria-haspopup="dialog"><span>${esc(m.name)}</span>${I('edit')}</button>`).join('')||`<div class="content-pad muted">${t('尚未添加模型。添加后可在 Agent 中心右击角色选择模型；未选择的 Agent 使用列表中的第一个。')}</div>`}</div></section>`;
 }
-function modelKeyStatus(m){
-  if(meta.keySaved?.[m.id])return badge(t('已保存'));
-  if(m.apiKeyEnv){
-    const set=meta.envSet?.[m.id];
-    return `<span class="mono">${esc(m.apiKeyEnv)}</span> ${badge(t(set?'已设置':'未设置'),set?'':'orange')}`;
-  }
-  return badge(t('未填写'),'gray');
-}
-function agentCard(a){
+function agentModal(aid){
+  const a=agents().find(a=>a.id===aid);if(!a)return;
   const ready=meta.ready?.[a.id];
-  return `<div class="content-pad"><div class="agent-head"><span class="agent-icon">${I(a.icon)}</span><div class="row-main"><strong>${esc(t(a.name))}</strong><small>${esc(t(a.description))}</small></div>${badge(t(ready?'可用':'待配置模型'),ready?'':'orange')}</div><div class="tags">${a.tools.map(t=>`<span class="tag mono">${esc(t)}</span>`).join('')}</div><div class="form-grid"><div class="field"><label for="agent-model-${a.id}">${t('模型')}</label><select id="agent-model-${a.id}"><option value="">${t('默认（列表第一个）')}</option>${models().map(m=>`<option value="${m.id}" ${m.id===a.modelId?'selected':''}>${esc(m.name)} · ${esc(m.model)}</option>`).join('')}</select></div>${field(t('单次对话最多工具步数（1–20）'),`agent-steps-${a.id}`,a.maxSteps,'input','type="number" min="1" max="20"')}</div>${field(t('指令（system prompt）'),`agent-system-${a.id}`,a.system,'textarea')}<div class="decision">${btn(t('保存'),`saveAgent('${a.id}')`,'primary small','check')}${btn(t('恢复默认指令'),`resetAgent('${a.id}')`,'small','sync')}</div></div>`;
+  modal(t('编辑 Agent')+' · '+t(a.name),`<form id="agent-form-${a.id}" onsubmit="event.preventDefault();saveAgent('${a.id}')"><div class="agent-head"><span class="agent-icon">${I(a.icon)}</span><div class="row-main"><strong>${esc(t(a.name))}</strong><small>${esc(t(a.description))}</small></div>${badge(t(ready?'可用':'待配置模型'),ready?'':'orange')}</div><p class="muted">${t('预设角色的工具范围固定；可修改指令、模型与单次对话的工具步数上限')}</p><div class="tags">${a.tools.map(tool=>`<span class="tag mono">${esc(tool)}</span>`).join('')}</div><div class="form-grid"><div class="field"><label for="agent-model-${a.id}">${t('模型')}</label><select id="agent-model-${a.id}"><option value="">${t('默认（列表第一个）')}</option>${models().map(m=>`<option value="${m.id}" ${m.id===a.modelId?'selected':''}>${esc(m.name)}</option>`).join('')}</select>${!models().length?`<small class="muted">${t('先在偏好设置中添加模型')}</small>`:''}</div>${field(t('单次对话最多工具步数（1–20）'),`agent-steps-${a.id}`,a.maxSteps,'input','type="number" min="1" max="20" step="1" required')}</div>${field(t('指令（system prompt）'),`agent-system-${a.id}`,a.system,'textarea','required')}</form>`,btn(t('恢复默认指令'),`resetAgent('${a.id}')`,'','sync')+`<button class="button primary" type="submit" form="agent-form-${a.id}">${I('check')}${t('保存')}</button>`,'agent-modal');
+  document.getElementById(`agent-model-${a.id}`).focus();
 }
 
 function toast(message){document.getElementById('toast-root').innerHTML=`<div class="toast" role="status">${esc(message)}</div>`;clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>document.getElementById('toast-root').innerHTML='',6500);}
-function modal(title,body,actions=''){document.getElementById('modal-root').innerHTML=`<div class="modal-backdrop" onclick="if(event.target===this)closeModal()"><section class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="modal-head"><h2>${esc(title)}</h2><button class="icon-button" onclick="closeModal()" aria-label="${t('关闭')}">${I('close')}</button></div><div class="modal-body">${body}</div><div class="modal-actions">${btn(t('关闭'),'closeModal()')}${actions}</div></section></div>`;document.querySelector('.modal input,.modal textarea,.modal button')?.focus();}
-function closeModal(){document.getElementById('modal-root').innerHTML='';}
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+function modal(title,body,actions='',className=''){document.getElementById('modal-root').innerHTML=`<div class="modal-backdrop" onclick="if(event.target===this)closeModal()"><section class="modal ${className}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="modal-head"><h2>${esc(title)}</h2><button class="icon-button" onclick="closeModal()" aria-label="${t('关闭')}">${I('close')}</button></div><div class="modal-body">${body}</div><div class="modal-actions">${btn(t('关闭'),'closeModal()')}${actions}</div></section></div>`;document.querySelector('.modal input,.modal textarea,.modal button')?.focus();}
+function closeModal(){const aid=document.querySelector('.agent-modal form')?.id.slice('agent-form-'.length),modelForm=document.querySelector('.model-modal form'),mid=modelForm?.dataset.modelId;document.getElementById('modal-root').innerHTML='';if(aid)document.querySelector(`.roster-card[data-agent-id="${aid}"]`)?.focus({preventScroll:true});else if(modelForm)document.querySelector(mid?`.model-item[data-model-id="${mid}"]`:'.model-add')?.focus({preventScroll:true});}
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape')closeModal();
+  const dialog=document.querySelector('.agent-modal,.model-modal');
+  if(e.key!=='Tab'||!dialog)return;
+  const controls=dialog.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)'),first=controls[0],last=controls[controls.length-1];
+  if(e.shiftKey&&(document.activeElement===first||!dialog.contains(document.activeElement))){e.preventDefault();last?.focus();}
+  else if(!e.shiftKey&&(document.activeElement===last||!dialog.contains(document.activeElement))){e.preventDefault();first?.focus();}
+});
 document.addEventListener('input',e=>{const el=e.target;if(el.id&&el.id!=='agent-message'&&el.closest('main'))ui.dirty[el.id]=el.value;});
 document.addEventListener('click',e=>{const a=e.target.closest('a[href^="http"]');if(!a)return;e.preventDefault();run(()=>request('openURL',{url:a.href}));});
 
@@ -252,24 +260,36 @@ function modelModal(mid){
   const m=models().find(x=>x.id===mid)||{protocol:'openai'};
   const hasKey=meta.keySaved?.[m.id]||m.apiKeyEnv;
   ui.modelId=m.id||'';
-  modal(t(m.id?'编辑模型':'添加模型'),field(t('名称（便于在 Agent 中选择）'),'model-name',m.name||'')+`<div class="field"><label for="model-protocol">${t('协议')}</label><select id="model-protocol" onchange="document.getElementById('model-hint').textContent=t(protocolHints[this.value])">${Object.entries(protocolNames).map(([k,n])=>`<option value="${k}" ${k===m.protocol?'selected':''}>${t(n)}</option>`).join('')}</select></div>`+field(t('API 基础地址（服务前缀）'),'model-url',m.baseUrl||'')+`<p class="muted" id="model-hint">${esc(t(protocolHints[m.protocol]))}</p>`+field(t('模型 ID'),'model-model',m.model||'')+
+  modal(t(m.id?'编辑模型':'添加模型'),`<form id="model-form" data-model-id="${m.id||''}" onsubmit="event.preventDefault();saveModel()">`+field(t('名称（便于在 Agent 中选择）'),'model-name',m.name||'','input','required')+`<div class="field"><label for="model-protocol">${t('协议')}</label><select id="model-protocol" onchange="document.getElementById('model-hint').textContent=t(protocolHints[this.value])">${Object.entries(protocolNames).map(([k,n])=>`<option value="${k}" ${k===m.protocol?'selected':''}>${t(n)}</option>`).join('')}</select></div>`+field(t('API 基础地址（服务前缀）'),'model-url',m.baseUrl||'','input','type="url" required')+`<p class="muted" id="model-hint">${esc(t(protocolHints[m.protocol]))}</p>`+field(t('模型 ID'),'model-model',m.model||'','input','required')+
     field('API Key','model-key','','input','type="password" autocomplete="new-password" spellcheck="false"')+
     `<p class="muted">${t(hasKey?'留空保留现有密钥设置，填写新密钥即可替换。':'API Key 保存在系统凭据库。无需认证的服务可留空。')}</p>`+
-    (hasKey?`<label class="muted"><input type="checkbox" id="model-clear-key" onchange="document.getElementById('model-key').disabled=this.checked"> ${t('移除当前密钥设置')}</label>`:''),
-    btn(t('保存模型'),'saveModel()','primary'));
+    (hasKey?`<label class="muted"><input type="checkbox" id="model-clear-key" onchange="document.getElementById('model-key').disabled=this.checked"> ${t('移除当前密钥设置')}</label>`:'')+'</form>',
+    (m.id?btn(t('删除模型'),`deleteModel('${m.id}')`,'','trash'):'')+`<button class="button primary" type="submit" form="model-form">${t('保存模型')}</button>`,'model-modal');
+  document.getElementById('model-name').focus();
 }
 function saveModel(){
+  const form=document.getElementById('model-form');
+  if(ui.busy.has('saveModel')||!form?.reportValidity())return;
+  const apiKey=val('model-key'),clearKey=document.getElementById('model-clear-key')?.checked;
+  const model={id:ui.modelId,name:val('model-name'),protocol:val('model-protocol'),baseUrl:val('model-url'),model:val('model-model'),apiKeyEnv:models().find(m=>m.id===ui.modelId)?.apiKeyEnv||''};
   run(async()=>{
-    const apiKey=val('model-key'),clearKey=document.getElementById('model-clear-key')?.checked;
-    const model={id:ui.modelId,name:val('model-name'),protocol:val('model-protocol'),baseUrl:val('model-url'),model:val('model-model'),apiKeyEnv:models().find(m=>m.id===ui.modelId)?.apiKeyEnv||''};
     await act('saveModel',{model,apiKey:clearKey?'':apiKey||undefined},'模型配置已保存');
-    closeModal();
+    if(form.isConnected)closeModal();
   });
 }
 function deleteModel(mid){const m=models().find(x=>x.id===mid);ui.modelId=mid;modal(t('删除模型'),`<p>${t('删除“{n}”后，使用它的 Agent 回退到列表中的第一个模型。',{n:esc(m.name)})}</p>`,btn(t('确认删除'),'confirmDeleteModel()','primary','trash'));}
 function confirmDeleteModel(){run(async()=>{await act('deleteModel',{modelId:ui.modelId},'模型已删除');closeModal();});}
-function saveAgent(aid){run(()=>act('saveAgent',{agent:{id:aid,system:val(`agent-system-${aid}`),modelId:val(`agent-model-${aid}`),maxSteps:Number(val(`agent-steps-${aid}`))}},'Agent 配置已保存'));}
-function resetAgent(aid){delete ui.dirty[`agent-system-${aid}`];run(()=>act('resetAgent',{agentId:aid},'已恢复默认指令'));}
+function saveAgent(aid){
+  const form=document.getElementById(`agent-form-${aid}`);
+  if(ui.busy.has('saveAgent')||ui.busy.has('resetAgent')||!form?.reportValidity())return;
+  const agent={id:aid,system:val(`agent-system-${aid}`),modelId:val(`agent-model-${aid}`),maxSteps:Number(val(`agent-steps-${aid}`))};
+  run(async()=>{await act('saveAgent',{agent},'Agent 配置已保存');if(form.isConnected)closeModal();});
+}
+function resetAgent(aid){
+  if(ui.busy.has('saveAgent')||ui.busy.has('resetAgent'))return;
+  const form=document.getElementById(`agent-form-${aid}`);
+  run(async()=>{await act('resetAgent',{agentId:aid},'已恢复默认指令');if(!form?.isConnected)return;const a=agents().find(a=>a.id===aid);form.querySelector('textarea').value=a.system;form.querySelector('input').value=a.maxSteps;});
+}
 function toggleAgent(){run(()=>act('settings',{settings:{...db.settings,paused:!db.settings.paused}},t(db.settings.paused?'巡检已恢复':'自动巡检已暂停')));}
 function tick(){run(()=>act('tick',{},'已发起一次巡检'));}
 function sendAgent(){

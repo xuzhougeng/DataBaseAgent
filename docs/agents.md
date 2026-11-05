@@ -50,7 +50,7 @@ Tool schemas are validated locally, including required fields, types, enums, num
 | Pipeline Advisor | Pipeline editing/locking, server checks, job creation and output inspection |
 | Operations Inspector | Server registration/checks, monitoring settings, job inspection/recovery and manifests |
 
-Tools, icons and descriptions are fixed in code. Model choice, instructions and step budgets are editable in **Preferences**. Existing workspaces adopt the executable preset scopes; prompts and step budgets that exactly match the former defaults are upgraded. Custom instructions and model choices are preserved.
+Tools, icons and descriptions are fixed in code. In **Agent center**, right-click a role card (or focus it and press Shift+F10) to edit its model, instructions and step budget in a dialog, or restore its preset instructions and step budget. A normal click opens **AI assistant** with that role selected. Existing workspaces adopt the executable preset scopes; prompts and step budgets that exactly match the former defaults are upgraded. Custom instructions and model choices are preserved.
 
 The separate **Agent review** button on the Review page still generates suggestions only, for up to 20 pending candidates. Its quote must appear verbatim in the title or abstract; otherwise the suggestion becomes `uncertain / low`. The conversational Reviewer can record decisions using `review_candidate`. Decisions require a reason and record `reviewedBy` as `user` or `agent:<id>`; legacy decisions without this field are shown as manual. Chat decisions are model judgments, not automatically verified evidence quotes.
 
@@ -79,6 +79,6 @@ The tool surface does not include recursive chat, generic shell execution or ope
 
 Every prompt states that titles, abstracts, logs and tool results are untrusted data, and that embedded instructions must be ignored. Agents should execute an authorized goal, ask in the conversation for missing facts, leave uncertain decisions pending, and distinguish saved/queued/running/completed states. Requests for explanation alone do not authorize mutations. Deleting a model requires the user to have asked for deletion.
 
-Model resolution uses the agent's selected profile, or the first profile when it no longer exists or is unset. Readiness requires a base URL, model ID and a configured key source when authentication is configured. The assistant page links directly to Preferences when a model is unavailable.
+Model resolution uses the agent's selected profile, or the first profile when it no longer exists or is unset. Readiness requires a base URL, model ID and a configured key source when authentication is configured. The assistant page links to **Preferences** to add a model, or to **Agent center** to change the selected model when profiles already exist.
 
 To add a tool, register a read implementation in `agent.go` or a schema and command mapping in `agent_tools.go`, then add it to appropriate specialist scopes. The primary assistant receives the complete catalogue. New commands should reuse service validation, return concrete IDs/results, and include tests for partial updates, errors and project boundaries.

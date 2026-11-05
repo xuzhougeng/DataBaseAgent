@@ -4,6 +4,8 @@ DBA talks to language models through three wire protocols behind one neutral int
 
 ## Profiles
 
+Preferences shows model names in a compact list. **Add model** opens a dialog; click a model name to edit its protocol, endpoint, model ID and API key. Model deletion is available in the edit dialog.
+
 | Field | Meaning |
 | --- | --- |
 | Name | Label shown in agent selectors. |
@@ -75,7 +77,7 @@ Enter exactly the prefix the gateway documents (for example `https://gateway.exa
 
 ## Assigning models to agents
 
-Each agent can use a different profile: a cheap local model for the Project Assistant, a stronger hosted model for the Reviewer. Agents without an explicit choice fall back to the first profile in the list; deleting a profile clears the references that pointed to it.
+Add profiles in **Preferences → Models**, then right-click a role card in **Agent center** to choose its model in the editor. Each agent can use a different profile: a cheap local model for the Project Assistant, a stronger hosted model for the Reviewer. Agents without an explicit choice fall back to the first profile in the list; deleting a profile clears the references that pointed to it.
 
 ## Troubleshooting
 
