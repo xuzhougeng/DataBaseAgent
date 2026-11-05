@@ -249,10 +249,10 @@ func runTool(st *State, pid string, a Agent, c ToolCall) (string, bool) {
 
 // ---- Agent loop: model → tool calls → results → model, bounded by MaxSteps, every call traced.
 
-func (s *Service) runAgent(ctx context.Context, a Agent, m ModelProfile, system string, turns []Turn, pid string) (string, []Trace, error) {
+func (s *Service) runAgent(ctx context.Context, a Agent, m ModelProfile, key, system string, turns []Turn, pid string) (string, []Trace, error) {
 	defs, trace := toolDefs(a.Tools), []Trace{}
 	for step := 0; step < max(1, a.MaxSteps); step++ {
-		reply, e := complete(ctx, m, system, turns, defs, false)
+		reply, e := complete(ctx, m, key, system, turns, defs, false)
 		if e != nil {
 			return "", trace, e
 		}
@@ -272,7 +272,7 @@ func (s *Service) runAgent(ctx context.Context, a Agent, m ModelProfile, system 
 		}
 	}
 	turns = append(turns, Turn{Role: "user", Text: "工具调用预算已用完。请仅根据已获得的信息直接给出结论，并说明还缺哪些信息。"})
-	reply, e := complete(ctx, m, system, turns, defs, true)
+	reply, e := complete(ctx, m, key, system, turns, defs, true)
 	if e != nil {
 		return "", trace, e
 	}
@@ -296,7 +296,7 @@ func (s *Service) Chat(ctx context.Context, pid, aid, message string) error {
 	if e != nil {
 		return e
 	}
-	m, e := modelFor(&state, *a)
+	m, key, e := s.Store.modelWithKey(*a)
 	if e != nil {
 		return e
 	}
@@ -310,7 +310,7 @@ func (s *Service) Chat(ctx context.Context, pid, aid, message string) error {
 		turns = turns[len(turns)-8:]
 	}
 	turns = append(turns, Turn{Role: "user", Text: message})
-	reply, trace, e := s.runAgent(ctx, *a, m, systemPrompt(*a, p), turns, pid)
+	reply, trace, e := s.runAgent(ctx, *a, m, key, systemPrompt(*a, p), turns, pid)
 	if e != nil {
 		return e
 	}
@@ -336,7 +336,7 @@ func (s *Service) AgentReview(ctx context.Context, pid, cid string) error {
 		return e
 	}
 	a, _ := agentByID(&state, "reviewer")
-	m, e := modelFor(&state, *a)
+	m, key, e := s.Store.modelWithKey(*a)
 	if e != nil {
 		return e
 	}
@@ -353,7 +353,7 @@ func (s *Service) AgentReview(ctx context.Context, pid, cid string) error {
 			break
 		}
 		prompt, _ := json.Marshal(map[string]any{"project": p.Name, "criteria": p.Criteria, "organism": p.Organism, "assay": p.Assay, "candidate": c})
-		reply, e := complete(ctx, m, system, []Turn{{Role: "user", Text: string(prompt)}}, nil, false)
+		reply, e := complete(ctx, m, key, system, []Turn{{Role: "user", Text: string(prompt)}}, nil, false)
 		if e != nil {
 			return e
 		}

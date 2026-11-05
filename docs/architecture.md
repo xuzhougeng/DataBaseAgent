@@ -94,7 +94,7 @@ Shutdown cancels the service context; an operation that fails because of shutdow
 | --- | --- |
 | Network exposure | The preview server binds `127.0.0.1` only. Any request carrying an `Origin` header must match the `Host`, which blocks cross-site POSTs from a browser. |
 | Request hygiene | POST bodies must be `application/json` and ≤ 4 MiB; unknown actions are rejected. |
-| Credentials | SSH uses `BatchMode=yes` and `StrictHostKeyChecking=yes`; passwords are never prompted or stored. Private-key paths are stored, keys are not. LLM keys are referenced by environment-variable name and read per request. Exports strip key paths. |
+| Credentials | SSH uses `BatchMode=yes` and `StrictHostKeyChecking=yes`, and exports strip private-key paths. DBA stores directly entered model keys in the system credential store and keeps only references in the workspace. Existing model profiles can read their configured environment variable. |
 | Paths | Output names must be safe relative paths (`[A-Za-z0-9._-/]`, no `..`, no absolute paths). The remote side re-checks with `realpath` that each file is inside `output/`; the local side confines artifact previews to the workspace. |
 | Untrusted content | Titles, abstracts, logs and tool results are passed to models as data with explicit instructions to ignore embedded directives; model output is validated (JSON shape, enum values, verbatim evidence) before anything is stored. |
 | Write authority | Agents have no write tools. Every state change is a user command through the Service. |
@@ -108,5 +108,5 @@ UI action ──POST /api/<action>──▶ Handler ──▶ Service.Dispatch �
                                                    ├── message ──▶ Agent loop ──▶ LLM adapter ──▶ tools (read-only snapshot)
                                                    ├── reviewAgent ──▶ LLM adapter ──▶ evidence check
                                                    └── tick / probe ──▶ Executor (SSH)
-UI ◀──GET /api/state (3 s poll)── State snapshot + per-agent readiness + env-var presence
+UI ◀──GET /api/state (3 s poll)── State snapshot + per-agent readiness + key status
 ```

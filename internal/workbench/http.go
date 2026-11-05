@@ -31,15 +31,19 @@ func Handler(s *Service, assets fs.FS) http.Handler {
 		switch {
 		case r.Method == "GET" && r.URL.Path == "/api/state":
 			state := s.Store.Snapshot()
-			envSet, ready := map[string]bool{}, map[string]bool{}
+			envSet, keySaved, ready := map[string]bool{}, map[string]bool{}, map[string]bool{}
 			for _, m := range state.Settings.Models {
 				envSet[m.ID] = m.APIKeyEnv == "" || os.Getenv(m.APIKeyEnv) != ""
+				keySaved[m.ID] = m.APIKeyRef != ""
 			}
 			for _, a := range state.Settings.Agents {
 				m, e := modelFor(&state, a)
 				ready[a.ID] = e == nil && modelReady(m)
 			}
-			write(map[string]any{"state": state, "root": s.Store.Root(), "envSet": envSet, "ready": ready})
+			for i := range state.Settings.Models {
+				state.Settings.Models[i].APIKeyRef = ""
+			}
+			write(map[string]any{"state": state, "root": s.Store.Root(), "envSet": envSet, "keySaved": keySaved, "ready": ready})
 		case r.Method == "GET" && r.URL.Path == "/api/artifact":
 			text, e := s.PreviewArtifact(r.URL.Query().Get("id"))
 			if e != nil {

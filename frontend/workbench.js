@@ -176,9 +176,17 @@ function agentPage(){
 
 function settingsPage(){
   const s=db.settings;
-  return head(t('偏好设置'),t('巡检策略、模型端点与 Agent 配置保存在本地工作空间；API Key 只从启动应用的环境变量读取。'))+`<section class="card"><div class="card-head"><h2>${t('Agent 巡检')}</h2>${badge(t(s.paused?'已暂停':'运行中'),s.paused?'orange':'')}</div><div class="content-pad"><div class="form-grid">${field(t('巡检间隔（秒）'),'setting-interval',s.intervalSeconds,'input','type="number" min="10" max="86400"')}${field(t('可恢复错误最大重试次数'),'setting-retries',s.maxRetries,'input','type="number" min="0" max="10"')}</div></div><div class="card-foot"><span class="muted">${t('巡检循环按固定恢复策略调度远端任务；模型只用于建议与对话。')}</span>${btn(t('保存巡检设置'),'saveLoop()','primary small','check')}</div></section>
-    <section class="card"><div class="card-head"><h2>${t('模型')}</h2><button class="text-button" onclick="modelModal()">${I('plus')}${t('添加模型')}</button></div>${table(['名称','协议','模型 ID','端点','API Key 环境变量',''].map(x=>t(x)),models().map(m=>`<tr><td><strong>${esc(m.name)}</strong></td><td>${esc(t(protocolNames[m.protocol]||m.protocol))}</td><td class="mono">${esc(m.model)}</td><td class="mono wrap url">${esc(m.baseUrl)}</td><td>${m.apiKeyEnv?`<span class="mono">${esc(m.apiKeyEnv)}</span> ${badge(t(meta.envSet?.[m.id]?'已设置':'未设置'),meta.envSet?.[m.id]?'':'orange')}`:badge(t('无需密钥'),'gray')}</td><td><button class="icon-button" onclick="modelModal('${m.id}')" aria-label="${t('编辑')} ${esc(m.name)}">${I('edit')}</button><button class="icon-button" onclick="deleteModel('${m.id}')" aria-label="${t('删除')} ${esc(m.name)}">${I('trash')}</button></td></tr>`),t('尚未添加模型。添加后即可在下方为每个 Agent 选择模型；未选择的 Agent 使用列表中的第一个。'))}</section>
+  return head(t('偏好设置'),t('巡检策略、模型端点与 Agent 配置保存在本地工作空间，API Key 保存在系统凭据库。'))+`<section class="card"><div class="card-head"><h2>${t('Agent 巡检')}</h2>${badge(t(s.paused?'已暂停':'运行中'),s.paused?'orange':'')}</div><div class="content-pad"><div class="form-grid">${field(t('巡检间隔（秒）'),'setting-interval',s.intervalSeconds,'input','type="number" min="10" max="86400"')}${field(t('可恢复错误最大重试次数'),'setting-retries',s.maxRetries,'input','type="number" min="0" max="10"')}</div></div><div class="card-foot"><span class="muted">${t('巡检循环按固定恢复策略调度远端任务；模型只用于建议与对话。')}</span>${btn(t('保存巡检设置'),'saveLoop()','primary small','check')}</div></section>
+    <section class="card"><div class="card-head"><h2>${t('模型')}</h2><button class="text-button" onclick="modelModal()">${I('plus')}${t('添加模型')}</button></div>${table(['名称','协议','模型 ID','端点','API Key',''].map(x=>t(x)),models().map(m=>`<tr><td><strong>${esc(m.name)}</strong></td><td>${esc(t(protocolNames[m.protocol]||m.protocol))}</td><td class="mono">${esc(m.model)}</td><td class="mono wrap url">${esc(m.baseUrl)}</td><td>${modelKeyStatus(m)}</td><td><button class="icon-button" onclick="modelModal('${m.id}')" aria-label="${t('编辑')} ${esc(m.name)}">${I('edit')}</button><button class="icon-button" onclick="deleteModel('${m.id}')" aria-label="${t('删除')} ${esc(m.name)}">${I('trash')}</button></td></tr>`),t('尚未添加模型。添加后即可在下方为每个 Agent 选择模型；未选择的 Agent 使用列表中的第一个。'))}</section>
     <section class="card"><div class="card-head"><h2>Agent</h2><small>${t('预设角色的工具范围固定；可修改指令、模型与单次对话的工具步数上限')}</small></div>${agents().map(agentCard).join('')}</section>`;
+}
+function modelKeyStatus(m){
+  if(meta.keySaved?.[m.id])return badge(t('已保存'));
+  if(m.apiKeyEnv){
+    const set=meta.envSet?.[m.id];
+    return `<span class="mono">${esc(m.apiKeyEnv)}</span> ${badge(t(set?'已设置':'未设置'),set?'':'orange')}`;
+  }
+  return badge(t('未填写'),'gray');
 }
 function agentCard(a){
   const ready=meta.ready?.[a.id];
@@ -218,8 +226,24 @@ function saveServer(){run(async()=>{await act('addServer',{server:{name:val('ser
 function testServer(sid){run(async()=>{toast(t('正在检查 SSH 和远程运行环境…'));await act('probeServer',{serverId:sid},'服务器检查通过');serverDetail(sid);});}
 function serverDetail(sid){const s=db.servers.find(v=>v.id===sid);modal(s.name+' · '+t('检查详情'),code(s.details||t('尚未检查连接。')));}
 function saveLoop(){run(()=>act('settings',{settings:{...db.settings,intervalSeconds:Number(val('setting-interval')),maxRetries:Number(val('setting-retries'))}},'巡检设置已保存'));}
-function modelModal(mid){const m=models().find(x=>x.id===mid)||{protocol:'openai',apiKeyEnv:'DBA_MODEL_API_KEY'};ui.modelId=m.id||'';modal(t(m.id?'编辑模型':'添加模型'),field(t('名称（便于在 Agent 中选择）'),'model-name',m.name||'')+`<div class="field"><label for="model-protocol">${t('协议')}</label><select id="model-protocol" onchange="document.getElementById('model-hint').textContent=t(protocolHints[this.value])">${Object.entries(protocolNames).map(([k,n])=>`<option value="${k}" ${k===m.protocol?'selected':''}>${t(n)}</option>`).join('')}</select></div>`+field(t('API 基础地址（服务前缀）'),'model-url',m.baseUrl||'')+`<p class="muted" id="model-hint">${esc(t(protocolHints[m.protocol]))}</p>`+field(t('模型 ID'),'model-model',m.model||'')+field(t('API Key 环境变量名（本地服务可留空）'),'model-key',m.apiKeyEnv||'')+`<p class="muted">${t('密钥只从启动应用的环境读取，不写入项目文件。模型请求遵循 HTTP_PROXY / HTTPS_PROXY。')}</p>`,btn(t('保存模型'),'saveModel()','primary'));}
-function saveModel(){run(async()=>{await act('saveModel',{model:{id:ui.modelId,name:val('model-name'),protocol:val('model-protocol'),baseUrl:val('model-url'),model:val('model-model'),apiKeyEnv:val('model-key')}},'模型配置已保存');closeModal();});}
+function modelModal(mid){
+  const m=models().find(x=>x.id===mid)||{protocol:'openai'};
+  const hasKey=meta.keySaved?.[m.id]||m.apiKeyEnv;
+  ui.modelId=m.id||'';
+  modal(t(m.id?'编辑模型':'添加模型'),field(t('名称（便于在 Agent 中选择）'),'model-name',m.name||'')+`<div class="field"><label for="model-protocol">${t('协议')}</label><select id="model-protocol" onchange="document.getElementById('model-hint').textContent=t(protocolHints[this.value])">${Object.entries(protocolNames).map(([k,n])=>`<option value="${k}" ${k===m.protocol?'selected':''}>${t(n)}</option>`).join('')}</select></div>`+field(t('API 基础地址（服务前缀）'),'model-url',m.baseUrl||'')+`<p class="muted" id="model-hint">${esc(t(protocolHints[m.protocol]))}</p>`+field(t('模型 ID'),'model-model',m.model||'')+
+    field('API Key','model-key','','input','type="password" autocomplete="new-password" spellcheck="false"')+
+    `<p class="muted">${t(hasKey?'留空保留现有密钥设置，填写新密钥即可替换。':'API Key 保存在系统凭据库。无需认证的服务可留空。')}</p>`+
+    (hasKey?`<label class="muted"><input type="checkbox" id="model-clear-key" onchange="document.getElementById('model-key').disabled=this.checked"> ${t('移除当前密钥设置')}</label>`:''),
+    btn(t('保存模型'),'saveModel()','primary'));
+}
+function saveModel(){
+  run(async()=>{
+    const apiKey=val('model-key'),clearKey=document.getElementById('model-clear-key')?.checked;
+    const model={id:ui.modelId,name:val('model-name'),protocol:val('model-protocol'),baseUrl:val('model-url'),model:val('model-model'),apiKeyEnv:models().find(m=>m.id===ui.modelId)?.apiKeyEnv||''};
+    await act('saveModel',{model,apiKey:clearKey?'':apiKey||undefined},'模型配置已保存');
+    closeModal();
+  });
+}
 function deleteModel(mid){const m=models().find(x=>x.id===mid);ui.modelId=mid;modal(t('删除模型'),`<p>${t('删除“{n}”后，使用它的 Agent 回退到列表中的第一个模型。',{n:esc(m.name)})}</p>`,btn(t('确认删除'),'confirmDeleteModel()','primary','trash'));}
 function confirmDeleteModel(){run(async()=>{await act('deleteModel',{modelId:ui.modelId},'模型已删除');closeModal();});}
 function saveAgent(aid){run(()=>act('saveAgent',{agent:{id:aid,system:val(`agent-system-${aid}`),modelId:val(`agent-model-${aid}`),maxSteps:Number(val(`agent-steps-${aid}`))}},'Agent 配置已保存'));}

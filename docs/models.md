@@ -10,9 +10,11 @@ DBA talks to language models through three wire protocols behind one neutral int
 | Protocol | `openai`, `anthropic` or `gemini` (see below). |
 | API base URL | Service prefix. DBA appends the protocol-specific path. `http` or `https`, no embedded credentials. |
 | Model ID | Passed through verbatim (`model` field or URL segment). |
-| API key environment variable | Name of the variable DBA reads at request time. Leave empty for local servers that need no key. |
+| API key | Enter the key from your provider. Leave it blank for a service that runs without authentication. |
 
-Keys are never written to the workspace. Set the variable in the shell that launches DBA (for example `export DBA_MODEL_API_KEY=…` or `$env:DBA_MODEL_API_KEY = '…'`), then start the app from that shell. The Preferences page shows whether each variable is currently set.
+DBA saves the key in the current user's system credential store (macOS Keychain, Windows Credential Manager, or a Linux Secret Service provider such as GNOME Keyring). The workspace stores a credential reference. Re-enter the key if you move the workspace to a different directory or machine.
+
+When editing a model, leave the API key blank to keep its current settings. Enter a new key to replace them or select **Remove current key settings** to use the model without a key. Profiles created in older versions keep reading their configured environment variable until you replace or remove the key settings.
 
 ## Protocols
 
@@ -51,21 +53,21 @@ The agent loop (see [agents.md](agents.md)) only ever sees `Turn` and `Reply`; s
 | Protocol | `openai` |
 | Base URL | `http://127.0.0.1:11434/v1` |
 | Model ID | the model you pulled, e.g. `qwen3` |
-| Key variable | *(empty)* |
+| API key | *(empty)* |
 
 Pick a model that supports tool calling; otherwise agents still work but will answer without consulting tools.
 
 **DeepSeek**
 
-Protocol `openai`, base `https://api.deepseek.com/v1`, model `deepseek-chat`, key variable of your choice.
+Use protocol `openai`, base `https://api.deepseek.com/v1`, model `deepseek-chat` and your DeepSeek API key.
 
 **Anthropic**
 
-Protocol `anthropic`, base `https://api.anthropic.com/v1`, model `claude-opus-5-5` (or another current model id), key variable e.g. `ANTHROPIC_API_KEY`.
+Use protocol `anthropic`, base `https://api.anthropic.com/v1`, your chosen model ID and your Anthropic API key.
 
 **Google Gemini**
 
-Protocol `gemini`, base `https://generativelanguage.googleapis.com/v1beta`, model id as listed by Google AI Studio, key variable e.g. `GEMINI_API_KEY`.
+Use protocol `gemini`, base `https://generativelanguage.googleapis.com/v1beta`, your model ID from Google AI Studio and your Gemini API key.
 
 **OpenAI-compatible gateway with a custom prefix**
 
@@ -79,7 +81,8 @@ Each agent can use a different profile: a cheap local model for the Project Assi
 
 | Symptom | Likely cause |
 | --- | --- |
-| "environment variable X is not set" | DBA was started from a shell without the variable. Set it and relaunch from the same shell. |
+| API key could not be saved or read | Check that your system credential store is running and unlocked. Re-enter the key in Preferences if the entry is missing. |
+| "environment variable X is not set" | The profile still uses an environment variable. Enter the API key in Preferences or set the variable and relaunch from the same shell. |
 | `HTTP 404` from an `openai` profile | Base URL already includes `/chat/completions`, or the gateway uses a different prefix. Enter the prefix only. |
 | `HTTP 400` mentioning `tools` on a local server | The model or server does not support tool calling. Choose another model. |
 | Reply says it cannot see data | The agent's tool scope excludes what you asked for. Use a different agent or ask the Project Assistant. |

@@ -78,12 +78,17 @@ func (s *Store) Snapshot() State {
 }
 func (s *Store) Root() string { return s.root }
 
-func (s *Store) Update(fn func(*State) error) error {
+func (s *Store) Update(fn func(*State) error) (err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	before, _ := json.Marshal(s.state)
+	defer func() {
+		if err != nil {
+			s.state = State{}
+			_ = json.Unmarshal(before, &s.state)
+		}
+	}()
 	if err := fn(&s.state); err != nil {
-		_ = json.Unmarshal(before, &s.state)
 		return err
 	}
 	if len(s.state.Events) > 2000 {
@@ -91,12 +96,10 @@ func (s *Store) Update(fn func(*State) error) error {
 	}
 	b, err := json.MarshalIndent(s.state, "", "  ")
 	if err != nil {
-		_ = json.Unmarshal(before, &s.state)
 		return err
 	}
 	tmp, err := os.CreateTemp(s.root, ".workbench-*.tmp")
 	if err != nil {
-		_ = json.Unmarshal(before, &s.state)
 		return err
 	}
 	name := tmp.Name()
@@ -112,7 +115,6 @@ func (s *Store) Update(fn func(*State) error) error {
 		err = os.Rename(name, filepath.Join(s.root, "workbench.json"))
 	}
 	if err != nil {
-		_ = json.Unmarshal(before, &s.state)
 		return fmt.Errorf("保存失败: %w", err)
 	}
 	return nil
