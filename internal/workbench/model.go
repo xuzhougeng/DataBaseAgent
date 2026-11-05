@@ -1,0 +1,165 @@
+package workbench
+
+import "time"
+
+const SchemaVersion = 1
+
+type State struct {
+	Schema    int        `json:"schema"`
+	Projects  []Project  `json:"projects"`
+	Servers   []Server   `json:"servers"`
+	Jobs      []Job      `json:"jobs"`
+	Artifacts []Artifact `json:"artifacts"`
+	Events    []Event    `json:"events"`
+	Settings  Settings   `json:"settings"`
+	LastTick  string     `json:"lastTick"`
+}
+
+type Project struct {
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Organism    string         `json:"organism"`
+	Assay       string         `json:"assay"`
+	Criteria    string         `json:"criteria"`
+	Query       string         `json:"query"`
+	Source      string         `json:"source"`
+	Candidates  []Candidate    `json:"candidates"`
+	Searches    []SearchRecord `json:"searches"`
+	Draft       Pipeline       `json:"draft"`
+	Versions    []Pipeline     `json:"versions"`
+	Messages    []Message      `json:"messages"`
+	CreatedAt   string         `json:"createdAt"`
+	UpdatedAt   string         `json:"updatedAt"`
+}
+
+type Candidate struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Source      string `json:"source"`
+	Accession   string `json:"accession"`
+	DOI         string `json:"doi"`
+	URL         string `json:"url"`
+	DownloadURL string `json:"downloadUrl"`
+	Abstract    string `json:"abstract"`
+	Organism    string `json:"organism"`
+	Year        string `json:"year"`
+	Suggestion  string `json:"suggestion"`
+	Confidence  string `json:"confidence"`
+	Reason      string `json:"reason"`
+	Evidence    string `json:"evidence"`
+	Decision    string `json:"decision"`
+	ReviewNote  string `json:"reviewNote"`
+	ReviewedAt  string `json:"reviewedAt"`
+	Groups      string `json:"groups"`
+}
+
+type SearchRecord struct {
+	ID      string `json:"id"`
+	Query   string `json:"query"`
+	Source  string `json:"source"`
+	Total   int    `json:"total"`
+	Fetched int    `json:"fetched"`
+	Added   int    `json:"added"`
+	At      string `json:"at"`
+}
+
+type Pipeline struct {
+	ID          string   `json:"id"`
+	Version     int      `json:"version"`
+	Name        string   `json:"name"`
+	ServerID    string   `json:"serverId"`
+	CPUs        int      `json:"cpus"`
+	Concurrency int      `json:"concurrency"`
+	Steps       []Step   `json:"steps"`
+	Outputs     []string `json:"outputs"`
+	Locked      bool     `json:"locked"`
+	CreatedAt   string   `json:"createdAt"`
+}
+
+type Step struct {
+	Name    string `json:"name"`
+	Tool    string `json:"tool"`
+	Command string `json:"command"`
+}
+
+type Server struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Host      string `json:"host"`
+	Port      int    `json:"port"`
+	User      string `json:"user"`
+	KeyPath   string `json:"keyPath"`
+	WorkDir   string `json:"workDir"`
+	CPUQuota  int    `json:"cpuQuota"`
+	MaxJobs   int    `json:"maxJobs"`
+	Status    string `json:"status"`
+	Details   string `json:"details"`
+	CheckedAt string `json:"checkedAt"`
+}
+
+type Job struct {
+	ID           string    `json:"id"`
+	ProjectID    string    `json:"projectId"`
+	CandidateID  string    `json:"candidateId"`
+	Accession    string    `json:"accession"`
+	Input        Candidate `json:"input"`
+	Pipeline     Pipeline  `json:"pipeline"`
+	Server       Server    `json:"server"`
+	Status       string    `json:"status"`
+	Attempt      int       `json:"attempt"`
+	Failures     int       `json:"failures"`
+	ResumeStatus string    `json:"resumeStatus"`
+	RetryAt      string    `json:"retryAt"`
+	RemoteDir    string    `json:"remoteDir"`
+	Log          string    `json:"log"`
+	Error        string    `json:"error"`
+	Help         string    `json:"help"`
+	CreatedAt    string    `json:"createdAt"`
+	UpdatedAt    string    `json:"updatedAt"`
+}
+
+type Artifact struct {
+	ID        string `json:"id"`
+	JobID     string `json:"jobId"`
+	ProjectID string `json:"projectId"`
+	Accession string `json:"accession"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	SHA256    string `json:"sha256"`
+	Size      int64  `json:"size"`
+	At        string `json:"at"`
+}
+
+type Event struct {
+	ID        string `json:"id"`
+	ProjectID string `json:"projectId"`
+	JobID     string `json:"jobId"`
+	Kind      string `json:"kind"`
+	Title     string `json:"title"`
+	Detail    string `json:"detail"`
+	At        string `json:"at"`
+}
+
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+	At      string `json:"at"`
+}
+type Settings struct {
+	Paused          bool   `json:"paused"`
+	IntervalSeconds int    `json:"intervalSeconds"`
+	MaxRetries      int    `json:"maxRetries"`
+	ModelURL        string `json:"modelUrl"`
+	Model           string `json:"model"`
+	APIKeyEnv       string `json:"apiKeyEnv"`
+}
+
+func now() string { return time.Now().UTC().Format(time.RFC3339) }
+
+func defaultPipeline() Pipeline {
+	return Pipeline{Name: "自定义数据处理流程", CPUs: 8, Concurrency: 2, Steps: []Step{
+		{Name: "数据获取", Tool: "curl", Command: "mkdir -p \"$DBA_INPUT\"\n: \"${DBA_SOURCE_URL:?请为数据集填写直接下载地址}\"\ncurl --fail --location --retry 3 --continue-at - --output \"$DBA_INPUT/source.dat\" \"$DBA_SOURCE_URL\""},
+		{Name: "数据处理", Tool: "用户定义", Command: ""},
+	}, Outputs: []string{"expression_matrix.tsv", "qc_report.html"}}
+}

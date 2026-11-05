@@ -1,0 +1,5 @@
+* text=auto eol=lf
+
+# Preserve the design package byte-for-byte for its SHA-256 manifest.
+design/DBA_design_package/** -text
+*.jpg binary

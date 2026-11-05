@@ -1,0 +1,14 @@
+.sidebar { overflow-y: auto; scrollbar-width: thin; }
+.sidebar .nav { flex-shrink: 0; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button:focus-visible, summary:focus-visible { outline: 2px solid #237c63; outline-offset: 3px; }
+.working { cursor: progress; }
+.candidate-list { max-height: 950px; overflow-y: auto; }
+.paper h3, .event-detail, .modal-body, .abstract, .agent-chat { overflow-wrap: anywhere; }
+.event-detail { max-width: 36rem; white-space: normal; }
+.abstract, .agent-chat { white-space: pre-wrap; }
+.code { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
+.modal-body h4 { font-size: 12px; margin-top: 24px; }
+details { margin: 20px 0; font-size: 12px; line-height: 1.8; }
+summary { color: #237c63; cursor: pointer; }
+.decision { flex-wrap: wrap; }
