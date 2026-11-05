@@ -1,7 +1,7 @@
 <h1 align="center">DataBaseAgent (DBA)</h1>
 
 <p align="center">
-  A local-first, human-in-the-loop workbench for building curated research datasets —<br>
+  A local-first, agent-driven workbench for building curated research datasets —<br>
   from literature discovery to remote processing and checksum-verified archives.
 </p>
 
@@ -26,7 +26,7 @@
 
 DBA turns a research question into a reproducible dataset. You define the topic and inclusion criteria; DBA runs broad literature and repository searches, lets a reviewer agent propose include/exclude decisions backed by verbatim evidence, locks an immutable processing pipeline, dispatches jobs to your Linux servers over SSH, supervises them with bounded automatic recovery, and archives every output locally with SHA-256 verification and a machine-readable provenance manifest.
 
-Everything runs on your machine. DBA writes workspace state to a single JSON file atomically and saves API keys in the system credential store. The LLM reads project data through scoped, read-only tools.
+Everything runs on your machine. DBA writes workspace state to a single JSON file atomically and saves API keys in the system credential store. The AI assistant reads and modifies workspace data through role-scoped tools backed by the same validated commands as the manual pages.
 
 <p align="center"><img src="assets/DBA-overview.jpg" width="960" alt="DBA project overview in English for the GPSAdb 2.0 SK-N-SH perturbation dataset archive"></p>
 
@@ -34,11 +34,11 @@ Everything runs on your machine. DBA writes workspace state to a single JSON fil
 
 | Principle | What it means in practice |
 | --- | --- |
-| **Human gates on every irreversible step** | Inclusion decisions, sample grouping, pipeline changes and job resumption are user actions. Agents suggest; they never decide. |
+| **A goal can drive the workflow** | Agents can record decisions, configure pipelines and create or resume jobs through validated tools. Manual pages remain available, and decisions retain their reasons and actor. |
 | **Evidence or it did not happen** | A reviewer suggestion is only stored if its quoted evidence appears verbatim in the title or abstract; otherwise it is downgraded to *uncertain*. |
 | **Immutable execution snapshots** | A job carries a frozen copy of its pipeline version, input record and server. Editing the draft never alters running or past jobs. |
 | **Bounded, observable recovery** | Only a short allow-list of network-class failures is retried, with exponential back-off and a hard cap. Everything else — unknown state, command errors, exhausted retries — becomes a help request with the full log attached. |
-| **Least-privilege agents** | Each preset agent has a fixed set of read-only tools scoped to the current project. Tool results are treated as untrusted data. |
+| **Least-privilege agents** | Each preset agent has a fixed tool scope. Project commands resolve a project ID and validate record membership; tool results are treated as untrusted data. |
 | **Local, atomic, inspectable state** | One `workbench.json`, written via temp-file + rename with transactional rollback; results live in plain directories with per-file checksums and a `run_manifest.json`. |
 
 ## How it works
@@ -47,7 +47,7 @@ Everything runs on your machine. DBA writes workspace state to a single JSON fil
  ┌──────────┐   ┌─────────────┐   ┌──────────────┐   ┌───────────────┐   ┌───────────────┐   ┌──────────────┐
  │  Define  │ → │ Broad search│ → │ Evidence-    │ → │ Lock pipeline │ → │ Remote jobs   │ → │ Verified     │
  │  topic   │   │ EPMC/PubMed │   │ backed review│   │ (versioned)   │   │ via SSH, with │   │ local archive│
- │ criteria │   │ GEO / import│   │ human decides│   │               │   │ supervision   │   │ + manifest   │
+ │ criteria │   │ GEO / import│   │ AI / manual  │   │               │   │ supervision   │   │ + manifest   │
  └──────────┘   └─────────────┘   └──────────────┘   └───────────────┘   └───────────────┘   └──────────────┘
 ```
 
@@ -63,7 +63,7 @@ Everything runs on your machine. DBA writes workspace state to a single JSON fil
  │   Service ─ command dispatcher, validation, quotas, pipeline locking                                              │
  │   Loop ──── scheduler tick: dispatch · poll · classify failures · retry · sync · escalate                          │
  │   Discovery  Europe PMC · PubMed · GEO adapters, cursor paging, de-duplication                                     │
- │   Agents ── bounded tool-use loop · 5 preset personas · 9 read-only tools · per-call trace                         │
+ │   Agents ── bounded tool-use loop · 5 preset personas · read/write tools · per-call trace                         │
  │   LLM ───── protocol adapters: OpenAI Chat Completions · Anthropic Messages · Google Gemini                        │
  │   Executor  SSH: idempotent submission, nohup, exit-code marker, resumable transfer, SHA-256                       │
  └─────────────────────────────────────┬──────────────────────────────────────┬──────────────────────────────────────┘
@@ -90,11 +90,13 @@ Everything runs on your machine. DBA writes workspace state to a single JSON fil
 
 | Agent | Icon | Purpose | Tools |
 | --- | --- | --- | --- |
-| Project Assistant | 🤖 | Explains the current stage and what to do next | all nine read-only tools |
-| Search Strategist | 🧭 | Evaluates recall/noise and proposes better query expressions | project, searches, candidates |
-| Reviewer | 📋 | Include/exclude suggestions with verbatim evidence; also powers batch review | project, candidates |
-| Pipeline Advisor | 🔀 | Reviews steps, commands, resource budgets and output contracts | project, pipeline, servers, jobs |
-| Operations Inspector | 🔧 | Reads job logs and server state, diagnoses failures, proposes fixes | jobs, servers, events |
+| Project Assistant | 🤖 | Executes the complete workflow from a goal | all application tools |
+| Search Strategist | 🧭 | Saves search strategy, runs discovery and imports candidates | project, search, import |
+| Reviewer | 📋 | Records decisions, reasons and known sample groups; also powers batch suggestions | project, candidates, review |
+| Pipeline Advisor | 🔀 | Configures, locks and launches pipelines | project, pipeline, servers, jobs |
+| Operations Inspector | 🔧 | Checks servers, configures monitoring and resumes resolved jobs | jobs, servers, settings, events, outputs |
+
+Conversations live on the dedicated **AI assistant** page; the right panel retains work progress, monitoring and help requests. Other pages show the same state and support manual edits. Workspace chat can start before a project exists.
 
 Each agent runs a bounded loop: *model → tool calls → results → model*, up to a configurable step budget, after which a final answer is forced. Every tool invocation (arguments, result excerpt, latency, error flag) is stored with the reply and can be expanded in the chat. See [docs/agents.md](docs/agents.md).
 
@@ -158,11 +160,11 @@ The companion manuscript case follows a FAM167A knockdown from GEO screening thr
 go test ./... && go vet ./... && node --check frontend/workbench.js
 ```
 
-The suite exercises project isolation, the human-review gate, immutable pipeline snapshots, cross-project server quotas, no-resubmission on lost acknowledgements, bounded recovery and hand-off, transfer recovery without re-execution, restart resumption, persistence rollback and corruption detection, discovery de-duplication and fetch limits, evidence verification, same-origin enforcement, agent tool scoping and tracing, all three model protocols, and schema migration — using a controllable executor and a stubbed HTTP transport. Real servers and model endpoints still need to be validated with your own configuration.
+The suite exercises project isolation, the recorded-inclusion gate, immutable pipeline snapshots, cross-project server quotas, no-resubmission on lost acknowledgements, bounded recovery and hand-off, transfer recovery without re-execution, restart resumption, persistence rollback and corruption detection, discovery de-duplication and fetch limits, evidence verification, same-origin enforcement, agent tool scoping and tracing, all three model protocols, schema migration, conversation-driven workflows and retained traces after failures — using a controllable executor and a stubbed HTTP transport. Real servers and model endpoints still need to be validated with your own configuration.
 
 ## Scope
 
-This is a working first release aimed at closing the single-server loop end to end. The executor is plain SSH on Linux (no Slurm, containers or memory/disk quotas); CPU budgets govern dispatch capacity, not thread counts. Remote processes keep running when DBA is closed and are re-attached on relaunch. Agents are read-only and never rewrite commands. See [docs/workflow.md#scope-and-non-goals](docs/workflow.md#scope-and-non-goals) for the full list.
+This is a working first release aimed at closing the single-server loop end to end. The executor is plain SSH on Linux (no Slurm, containers or memory/disk quotas); CPU budgets govern dispatch capacity, not thread counts. Remote processes keep running when DBA is closed and are re-attached on relaunch. Agents can save and lock pipeline changes through tools; existing jobs retain their frozen commands. See [docs/workflow.md#scope-and-non-goals](docs/workflow.md#scope-and-non-goals) for the full list.
 
 ## Repository layout
 

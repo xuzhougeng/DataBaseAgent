@@ -7,10 +7,10 @@ DBA is a single Go binary with an embedded web UI. There is no database server, 
 | Component | File | Responsibility |
 | --- | --- | --- |
 | Store | `internal/workbench/store.go` | Owns the in-memory `State`, serializes it to `workbench.json` atomically, performs schema migration on open, rolls back failed transactions. |
-| Service | `internal/workbench/service.go` | Dispatches UI commands (`createProject`, `review`, `lockPipeline`, `launch`, `saveModel`, …), validates input, enforces quotas and the human-review gate. |
+| Service | `internal/workbench/service.go` | Dispatches UI commands (`createProject`, `review`, `lockPipeline`, `launch`, `saveModel`, …), validates input, enforces quotas and the recorded-inclusion gate. |
 | Loop | `internal/workbench/loop.go` | The supervision loop: wakes every `intervalSeconds`, observes in-flight jobs, dispatches queued jobs within quotas, classifies failures, schedules retries, escalates to help requests, archives results. |
 | Discovery | `internal/workbench/discovery.go` | Europe PMC, PubMed and GEO adapters; paging, rate limiting, candidate normalization and de-duplication. |
-| Agents | `internal/workbench/agent.go` | Preset personas, the read-only tool catalogue, the bounded tool-use loop, chat history and the batch reviewer. |
+| Agents | `internal/workbench/agent.go` | Preset personas, read tools and validated command tools (`agent_tools.go`), the bounded tool-use loop, chat history and the batch reviewer. |
 | LLM | `internal/workbench/llm.go` | Protocol adapters that translate a neutral conversation model to OpenAI Chat Completions, Anthropic Messages and Gemini generateContent. |
 | Executor | `internal/workbench/ssh.go` | The `Executor` interface and its SSH implementation: probe, idempotent start, poll, resumable verified sync. |
 | HTTP | `internal/workbench/http.go` | Serves embedded assets and the JSON API; enforces same-origin, JSON-only POSTs and a 4 MiB body limit. |
@@ -27,7 +27,7 @@ State
 ├── Projects[]      topic, criteria, query, source
 │   ├── Candidates[]   title, abstract, accession, DOI, URL, downloadUrl, organism, year,
 │   │                  suggestion / confidence / reason / evidence (agent),
-│   │                  decision / reviewNote / groups / reviewedAt (human)
+│   │                  decision / reviewNote / groups / reviewedAt / reviewedBy (user or agent)
 │   ├── Searches[]     query, source, total hits, fetched, added, timestamp
 │   ├── Draft          editable Pipeline
 │   ├── Versions[]     locked, immutable Pipelines (monotonic version numbers)
@@ -36,6 +36,7 @@ State
 ├── Jobs[]          frozen copies of input Candidate + Pipeline + Server, status, attempt,
 │                   failures, retryAt, remoteDir, log tail, error, help, resumeStatus
 ├── Artifacts[]     name, local path, SHA-256, size, job/project/accession
+├── Messages[]      workspace conversations (before selecting a project)
 ├── Events[]        audit trail (capped at 2000), kinds: user · search · review · queue ·
 │                   dispatch · repair · help · sync · success · server · agent · error
 └── Settings        paused, intervalSeconds, maxRetries, Models[], Agents[]
@@ -97,7 +98,7 @@ Shutdown cancels the service context; an operation that fails because of shutdow
 | Credentials | SSH uses `BatchMode=yes` and `StrictHostKeyChecking=yes`, and exports strip private-key paths. DBA stores directly entered model keys in the system credential store and keeps only references in the workspace. Existing model profiles can read their configured environment variable. |
 | Paths | Output names must be safe relative paths (`[A-Za-z0-9._-/]`, no `..`, no absolute paths). The remote side re-checks with `realpath` that each file is inside `output/`; the local side confines artifact previews to the workspace. |
 | Untrusted content | Titles, abstracts, logs and tool results are passed to models as data with explicit instructions to ignore embedded directives; model output is validated (JSON shape, enum values, verbatim evidence) before anything is stored. |
-| Write authority | Agents have no write tools. Every state change is a user command through the Service. |
+| Write authority | Role-scoped tools dispatch the same validated Service commands as the UI. Project tools resolve a project ID; candidate/job mutations check membership. No generic shell or recursive chat tool is exposed. |
 
 ## Request flow
 
@@ -105,7 +106,7 @@ Shutdown cancels the service context; an operation that fails because of shutdow
 UI action ──POST /api/<action>──▶ Handler ──▶ Service.Dispatch ──▶ Store.Update (validated, atomic)
                                                    │
                                                    ├── search  ──▶ Discovery adapters ──▶ merge candidates
-                                                   ├── message ──▶ Agent loop ──▶ LLM adapter ──▶ tools (read-only snapshot)
+                                                   ├── message ──▶ Agent loop ──▶ LLM adapter ──▶ tools (fresh snapshot / Service commands)
                                                    ├── reviewAgent ──▶ LLM adapter ──▶ evidence check
                                                    └── tick / probe ──▶ Executor (SSH)
 UI ◀──GET /api/state (3 s poll)── State snapshot + per-agent readiness + key status

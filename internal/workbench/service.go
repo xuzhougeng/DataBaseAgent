@@ -16,19 +16,21 @@ import (
 )
 
 type Service struct {
-	Store    *Store
-	Runner   Executor
-	tickMu   sync.Mutex
-	searchMu sync.Mutex
-	opMu     sync.Mutex
-	inFlight map[string]bool
-	ctx      context.Context
-	cancel   context.CancelFunc
+	Store     *Store
+	Runner    Executor
+	tickMu    sync.Mutex
+	searchMu  sync.Mutex
+	opMu      sync.Mutex
+	agentMu   sync.Mutex
+	agentRuns map[string]AgentRun
+	inFlight  map[string]bool
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 func NewService(store *Store) *Service {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Service{Store: store, Runner: &SSHExecutor{}, ctx: ctx, cancel: cancel, inFlight: map[string]bool{}}
+	return &Service{Store: store, Runner: &SSHExecutor{}, ctx: ctx, cancel: cancel, inFlight: map[string]bool{}, agentRuns: map[string]AgentRun{}}
 }
 func (s *Service) Stop() { s.cancel() }
 
@@ -90,6 +92,7 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 		return nil, openURL(r.URL)
 	}
 	var newKeyRef, oldKeyRef string
+	var result any
 	err = s.Store.Update(func(st *State) error {
 		switch action {
 		case "createProject":
@@ -98,6 +101,7 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 			}
 			p := Project{ID: id("project"), Name: strings.TrimSpace(r.Name), Description: r.Description, Source: "Europe PMC", Candidates: []Candidate{}, Searches: []SearchRecord{}, Versions: []Pipeline{}, Messages: []Message{}, Draft: defaultPipeline(), CreatedAt: now(), UpdatedAt: now()}
 			st.Projects = append(st.Projects, p)
+			result = map[string]string{"projectId": p.ID, "name": p.Name}
 			event(st, p.ID, "", "user", "项目已创建", p.Name)
 		case "saveProject":
 			p, e := projectByID(st, r.ProjectID)
@@ -135,7 +139,7 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 				return errors.New("无效的复核结论")
 			}
 			if strings.TrimSpace(r.Note) == "" {
-				return errors.New("请填写人工复核理由")
+				return errors.New("请填写复核理由")
 			}
 			for i := range p.Candidates {
 				c := &p.Candidates[i]
@@ -151,7 +155,11 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 					c.DownloadURL = r.DownloadURL
 					c.Accession = r.Accession
 					c.ReviewedAt = now()
-					event(st, p.ID, "", "review", "人工复核已记录", c.Title+" → "+r.Decision+"；"+r.Note)
+					c.ReviewedBy = "user"
+					if actor, ok := ctx.Value(agentActorKey{}).(string); ok {
+						c.ReviewedBy = "agent:" + actor
+					}
+					event(st, p.ID, "", "review", "复核已记录 · "+c.ReviewedBy, c.Title+" → "+r.Decision+"；"+r.Note)
 					return nil
 				}
 			}
@@ -177,6 +185,7 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 				event(st, p.ID, "", "user", "流程版本已锁定", "v"+strconv.Itoa(v.Version)+" · "+v.Name)
 			}
 			p.Draft = v
+			result = v
 			p.UpdatedAt = now()
 		case "addServer":
 			v := r.Server
@@ -186,6 +195,7 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 			v.ID = id("server")
 			v.Status = "unchecked"
 			st.Servers = append(st.Servers, v)
+			result = map[string]string{"serverId": v.ID, "name": v.Name}
 			event(st, "", "", "user", "服务器配置已保存", v.Name)
 		case "launch":
 			return queueJobs(st, r.ProjectID)
@@ -216,7 +226,7 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 				j.Status = j.ResumeStatus
 			}
 			j.ResumeStatus = ""
-			event(st, j.ProjectID, j.ID, "user", "人工处理完成，任务恢复", r.Note)
+			event(st, j.ProjectID, j.ID, "user", "处理完成，任务恢复", r.Note)
 		case "settings":
 			v := r.Settings
 			if v.IntervalSeconds < 10 || v.IntervalSeconds > 86400 || v.MaxRetries < 0 || v.MaxRetries > 10 {
@@ -264,6 +274,7 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 				v.ID = id("model")
 				st.Settings.Models = append(st.Settings.Models, v)
 			}
+			result = map[string]string{"modelId": v.ID, "name": v.Name}
 			event(st, "", "", "user", "模型配置已保存", v.Name+" · "+v.Protocol+" · "+v.Model)
 		case "deleteModel":
 			kept := []ModelProfile{}
@@ -327,7 +338,7 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 	} else {
 		s.Store.deleteModelKey(oldKeyRef)
 	}
-	return nil, err
+	return result, err
 }
 
 func validHTTPURL(raw string) error {
