@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">DBA</title>
+  <desc id="desc">A mint-green database stack with two eyes and an antenna on a dark green tile.</desc>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#216D58"/>
+      <stop offset=".54" stop-color="#16483D"/>
+      <stop offset="1" stop-color="#0B2B25"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#BBEAD3" stop-opacity=".48"/>
+      <stop offset=".52" stop-color="#72B89F" stop-opacity=".20"/>
+      <stop offset="1" stop-color="#041C17" stop-opacity=".50"/>
+    </linearGradient>
+    <linearGradient id="cap" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#F0FFF0"/>
+      <stop offset="1" stop-color="#B3E8CA"/>
+    </linearGradient>
+    <linearGradient id="face" x1="0" y1="0" x2="1" y2=".45">
+      <stop stop-color="#DEF8E7"/>
+      <stop offset="1" stop-color="#97DDBA"/>
+    </linearGradient>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2=".45">
+      <stop stop-color="#A1E3BE"/>
+      <stop offset="1" stop-color="#68BC99"/>
+    </linearGradient>
+  </defs>
+
+  <path d="M348 78h328c205 0 270 65 270 270v328c0 205-65 270-270 270H348C143 946 78 881 78 676V348C78 143 143 78 348 78Z"
+        fill="url(#tile)" stroke="url(#rim)" stroke-width="4"/>
+
+  <path d="M512 252v72" fill="none" stroke="#B3E8CA" stroke-width="34" stroke-linecap="round"/>
+  <circle cx="512" cy="244" r="37" fill="#DBFA9C"/>
+
+  <ellipse cx="512" cy="386" rx="268" ry="89" fill="url(#cap)"/>
+  <path d="M244 428c47 53 151 86 268 86s221-33 268-86v143c0 50-120 91-268 91s-268-41-268-91Z" fill="url(#face)"/>
+  <path d="M244 620c47 50 151 80 268 80s221-30 268-80v63c0 50-120 91-268 91s-268-41-268-91Z" fill="url(#base)"/>
+
+  <g fill="#103B31">
+    <rect x="381" y="541" width="70" height="79" rx="35"/>
+    <rect x="573" y="541" width="70" height="79" rx="35"/>
+  </g>
+</svg>

@@ -49,6 +49,20 @@ Release builds use `-tags production -ldflags "-s -w"` (plus `-H windowsgui` on 
 
 Windows targets are pure Go and build anywhere. For a non-host macOS or Linux target the scripts switch to the Wails purego backend (`CGO_ENABLED=0 -tags purego`), which needs no C toolchain but is marked experimental by Wails — build on the target platform for releases. `build.ps1` defaults to `http://127.0.0.1:7897` as module-download proxy when `HTTPS_PROXY` is unset; `build.sh` only inherits the environment.
 
+### Desktop icon
+
+The build scripts copy `assets/dba-icon.icns` into the macOS bundle. Go automatically links the matching `dba_windows_<arch>.syso` resource into the Windows executable.
+
+After editing `assets/dba-icon.svg`, update the ICNS and ICO exports. Then run these commands from the repository root with LLVM tools on `PATH` to refresh the checked-in Windows resources.
+
+```bash
+mkdir -p .tmp
+(cd assets && llvm-rc /fo ../.tmp/dba-icon.res dba-icon.rc)
+llvm-cvtres /timestamp:0 /machine:x64   /out:dba_windows_amd64.syso .tmp/dba-icon.res
+llvm-cvtres /timestamp:0 /machine:arm64 /out:dba_windows_arm64.syso .tmp/dba-icon.res
+llvm-cvtres /timestamp:0 /machine:x86   /out:dba_windows_386.syso   .tmp/dba-icon.res
+```
+
 ## Installers
 
 ```bash

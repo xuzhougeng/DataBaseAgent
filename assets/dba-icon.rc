@@ -1,0 +1,2 @@
+// Wails loads the main window icon from resource ID 3.
+3 ICON "dba-icon.ico"
