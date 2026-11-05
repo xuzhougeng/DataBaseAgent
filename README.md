@@ -4,18 +4,57 @@
 
 ## 运行与构建
 
-运行 Windows 成品需要 WebView2 Runtime，远程执行还需要系统 OpenSSH 客户端。从源码构建需要 Go 1.26+。前端没有 npm 依赖，静态资源直接嵌入可执行文件。
+从源码构建需要 Go 1.26+；前端没有 npm 依赖，静态资源直接嵌入可执行文件。远程执行在任何平台都需要系统 `ssh` 客户端（Windows 为内置 OpenSSH）。
+
+| 平台 | 运行时依赖 | 本机构建额外依赖 | 产物 |
+| --- | --- | --- | --- |
+| Windows 10/11 | WebView2 Runtime（Windows 11 自带） | 无 | `bin/DBA.exe` |
+| macOS 11+ | 无，使用系统 WebKit | Xcode 命令行工具：`xcode-select --install` | `bin/DBA.app` |
+| Linux | GTK 4 与 WebKitGTK 6.0 | 对应开发包，Debian/Ubuntu 为 `libgtk-4-dev libwebkitgtk-6.0-dev`，Fedora 为 `gtk4-devel webkitgtk6.0-devel` | `bin/DBA` |
+
+macOS / Linux：
+
+```bash
+scripts/build.sh
+```
+
+```bash
+scripts/build.sh all
+```
+
+Windows（PowerShell）：
 
 ```powershell
 ./scripts/build.ps1
-./bin/DBA.exe
 ```
 
-默认工作空间为 `%APPDATA%\DataBaseAgent`，保存 `workbench.json` 与 `projects/<项目ID>/results/<任务ID>/`。用 `-workspace "D:\DBA-workspace"` 指定其他目录。同一工作空间的桌面实例复用现有窗口。
-
-浏览器开发预览使用同一个后端和同一套静态资源：
-
 ```powershell
+./scripts/build.ps1 -Target all
+```
+
+两个脚本都接受 `windows`、`darwin`、`linux`、`all` 目标；`all` 一次产出三个平台的成品。`--debug` / `-Debug` 不剥离符号并启用 Wails 开发特性。`GOARCH=arm64` 可切换 Windows / Linux 架构，`TAGS=gtk3` 让 Linux 成品改用 GTK 3 + WebKit2GTK 4.1（旧发行版没有 WebKitGTK 6.0 时使用）。
+
+安装包：
+
+```bash
+scripts/build.sh setup
+```
+
+```bash
+scripts/build.sh dmg
+```
+
+`setup` 生成 `bin/DBA-Setup.exe`（PowerShell 为 `./scripts/build.ps1 -Target setup`），需要 NSIS 3 的 `makensis` 在 PATH 中：macOS `brew install makensis`，Debian/Ubuntu `apt install nsis`，Windows 从 [nsis.sourceforge.io](https://nsis.sourceforge.io) 安装。安装包按用户安装到 `%LOCALAPPDATA%\Programs\DBA`，不需要管理员权限，写入开始菜单与「应用和功能」卸载项；缺少 WebView2 Runtime 时提示下载；卸载不删除 `%APPDATA%\DataBaseAgent` 工作空间。安装脚本在 `scripts/installer.nsi`。
+
+`dmg` 生成 `bin/DBA.dmg`，内含 `DBA.app` 和 `Applications` 快捷方式，只能在 macOS 上用系统自带的 `hdiutil` 生成。两种安装包都未签名：macOS 需要右键「打开」或 `xattr -dr com.apple.quarantine`，Windows SmartScreen 可能提示「更多信息 → 仍要运行」。
+
+交叉编译规则：Windows 目标是纯 Go，在任何平台都能构建。为非本机平台构建 macOS 或 Linux 时，脚本切换到 Wails 的 purego 后端（`CGO_ENABLED=0 -tags purego`），不需要 C 工具链，但 Wails 将其标为实验特性；正式发布请在目标平台本机构建。`PUREGO=1 scripts/build.sh` 可在本机也省掉 C 工具链。`build.ps1` 在未设置 `HTTPS_PROXY` 时默认走 `http://127.0.0.1:7897` 代理下载模块，`build.sh` 只沿用当前环境变量。
+
+默认工作空间：Windows `%APPDATA%\DataBaseAgent`，macOS `~/Library/Application Support/DataBaseAgent`，Linux `~/.config/DataBaseAgent`，保存 `workbench.json` 与 `projects/<项目ID>/results/<任务ID>/`。用 `-workspace <目录>` 指定其他目录，macOS 为 `open bin/DBA.app --args -workspace <目录>`。同一工作空间的桌面实例复用现有窗口。
+
+浏览器开发预览使用同一个后端和同一套静态资源，任何平台都不需要 C 工具链：
+
+```bash
 go run ./cmd/dba-server -port 3415 -workspace .tmp/dev-workspace
 ```
 
@@ -36,7 +75,7 @@ go run ./cmd/dba-server -port 3415 -workspace .tmp/dev-workspace
 
 在偏好设置中填写支持 Chat Completions 协议的 API 基础地址、模型名称和密钥环境变量名。密钥只从进程环境读取，不写入项目文件。例如先设置 `$env:DBA_MODEL_API_KEY`，再从同一终端启动应用。模型请求会包含对应项目的范围、候选元信息或任务摘要。端点请填写到服务前缀，如 `https://provider.example/v1`，应用追加 `/chat/completions`。
 
-检索和模型 HTTP 请求遵循启动进程的 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量。GitHub 操作及构建脚本使用 `http://127.0.0.1:7897` 代理。SSH 采用本机密钥或 SSH Agent，强制校验已知主机，不支持交互式密码输入。
+检索和模型 HTTP 请求遵循启动进程的 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量。GitHub 操作与 `build.ps1` 默认使用 `http://127.0.0.1:7897` 代理。SSH 采用本机密钥或 SSH Agent，强制校验已知主机，不支持交互式密码输入。
 
 ## 当前边界
 
@@ -46,10 +85,8 @@ go run ./cmd/dba-server -port 3415 -workspace .tmp/dev-workspace
 
 ## 验证
 
-```powershell
-go test ./...
-go vet ./...
-node --check frontend/workbench.js
+```bash
+go test ./... && go vet ./... && node --check frontend/workbench.js
 ```
 
 测试覆盖项目隔离、人工纳入门槛、流程与输入快照、跨项目服务器配额、连接失败不重复提交、有限恢复和人工接手、校验与本地归档、重启持久化、损坏文件保护、检索去重与获取上限、模型证据校验和 HTTP 来源检查。自动化测试通过可控执行器验证调度闭环；真实服务器和模型端点仍须使用自己的配置完成联调。
