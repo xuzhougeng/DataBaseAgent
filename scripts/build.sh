@@ -9,6 +9,10 @@ cd "$(dirname "$0")/.."
 target=${1:-$(go env GOOS)}
 debug=0; [ "${2:-}" = "--debug" ] && debug=1
 host=$(go env GOOS)
+macos_target=13.0
+case "$(go env GOVERSION)" in
+  go1.26|go1.26.*) macos_target=12.0 ;;
+esac
 
 build() { # build <os> <arch> <输出路径>
   local os=$1 arch=$2 out=$3 tags=production ldflags='-s -w' cgo=1
@@ -19,7 +23,7 @@ build() { # build <os> <arch> <输出路径>
     cgo=0; [ "$os" != windows ] && tags="purego${tags:+,$tags}"
   fi
   echo "==> $os/$arch -> $out (CGO_ENABLED=$cgo tags=${tags:-无})"
-  MACOSX_DEPLOYMENT_TARGET=11.0 CGO_CFLAGS=-mmacosx-version-min=11.0 CGO_LDFLAGS=-mmacosx-version-min=11.0 \
+  MACOSX_DEPLOYMENT_TARGET=$macos_target CGO_CFLAGS="-mmacosx-version-min=$macos_target" CGO_LDFLAGS="-mmacosx-version-min=$macos_target" \
   CGO_ENABLED=$cgo GOOS=$os GOARCH=$arch go build ${tags:+-tags "$tags"} -ldflags "$ldflags" -o "$out" .
 }
 
@@ -27,7 +31,7 @@ mac_app() { # 组装最小 .app 包
   local app=bin/DBA.app/Contents
   mkdir -p "$app/MacOS"
   build darwin "${GOARCH:-$( [ "$host" = darwin ] && go env GOARCH || echo arm64 )}" "$app/MacOS/DBA"
-  cat > "$app/Info.plist" <<'PLIST'
+  cat > "$app/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -38,7 +42,7 @@ mac_app() { # 组装最小 .app 包
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>0.1.0</string>
-  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>LSMinimumSystemVersion</key><string>$macos_target</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST

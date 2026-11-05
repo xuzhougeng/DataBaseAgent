@@ -11,7 +11,7 @@
 | 平台 | 运行时依赖 | 本机构建额外依赖 | 产物 |
 | --- | --- | --- | --- |
 | Windows 10/11 | WebView2 Runtime（Windows 11 自带） | 无 | `bin/DBA.exe` |
-| macOS 11+ | 无，使用系统 WebKit | Xcode 命令行工具：`xcode-select --install` | `bin/DBA.app` |
+| macOS 12+（Go 1.26）或 macOS 13+（Go 1.27） | 系统 WebKit | Xcode 命令行工具：`xcode-select --install` | `bin/DBA.app` |
 | Linux | GTK 4 与 WebKitGTK 6.0 | 对应开发包，Debian/Ubuntu 为 `libgtk-4-dev libwebkitgtk-6.0-dev`，Fedora 为 `gtk4-devel webkitgtk6.0-devel` | `bin/DBA` |
 
 macOS / Linux：

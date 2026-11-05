@@ -7,7 +7,7 @@ DBA is a Wails v3 desktop application written in Go with an embedded vanilla-JS 
 | Platform | Runtime dependency | Native build dependency | Artifact |
 | --- | --- | --- | --- |
 | Windows 10/11 | WebView2 Runtime (bundled with Windows 11) | none — pure Go | `bin/DBA.exe` |
-| macOS 11+ | none (system WebKit) | Xcode Command Line Tools (`xcode-select --install`) | `bin/DBA.app` |
+| macOS 12+ with Go 1.26, or macOS 13+ with Go 1.27 | system WebKit | Xcode Command Line Tools (`xcode-select --install`) | `bin/DBA.app` |
 | Linux | GTK 4 + WebKitGTK 6.0 | `libgtk-4-dev libwebkitgtk-6.0-dev` (Debian/Ubuntu) or `gtk4-devel webkitgtk6.0-devel` (Fedora) | `bin/DBA` |
 
 Remote execution additionally requires an `ssh` client on the machine running DBA (Windows ships OpenSSH).
@@ -43,7 +43,7 @@ Targets: `windows`, `darwin`, `linux`, `all`, `setup`, `dmg`. Options:
 | `TAGS=gtk3` | Build Linux against GTK 3 + WebKit2GTK 4.1 for distributions without WebKitGTK 6.0. |
 | `PUREGO=1` | Use the Wails purego backend on the host platform too (no C toolchain). |
 
-Release builds use `-tags production -ldflags "-s -w"` (plus `-H windowsgui` on Windows) and target macOS 11.0.
+Release builds use `-tags production -ldflags "-s -w"` (plus `-H windowsgui` on Windows). The macOS bundle declares the minimum version required by the Go toolchain. [Go minimum requirements](https://go.dev/wiki/MinimumRequirements#macos-formerly-os-x-aka-darwin)
 
 ### Cross-compilation
 
