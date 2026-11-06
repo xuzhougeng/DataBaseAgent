@@ -62,11 +62,11 @@ async function act(action,body={},message=t('已保存')){
   if(ui.busy.has(action))return;
   ui.busy.add(action);document.body.classList.add('working');if(action==='message')render();
   try{const result=await request(action,body);await refresh(true);if(message)toast(t(message));return result;}
-  finally{ui.busy.delete(action);if(!ui.busy.size)document.body.classList.remove('working');if(['search','reviewAgent','message'].includes(action))render();}
+  finally{ui.busy.delete(action);if(!ui.busy.size)document.body.classList.remove('working');if(['search','reviewAgent','message','buildStaticSite'].includes(action))render();}
 }
 function run(fn){Promise.resolve().then(fn).catch(e=>toast(e.message||String(e)));}
 function go(page){ui.page=page;render();document.querySelector('main')?.scrollTo(0,0);}
-function selectProject(id){ui.projectId=id;ui.candidateId='';ui.historyQuery='';syncChatState();saveChatUI();ui.page='agent';render();}
+function selectProject(id){ui.projectId=id;ui.candidateId='';ui.historyQuery='';syncChatState();saveChatUI();ui.page=!id?'agent':staticMode(current())?'site':'overview';render();}
 function mentionQuery(input){
   const prefix=input.value.slice(0,input.selectionStart),match=prefix.match(/(?:^|[\s,，。;；:：、(（])@([\p{L}\p{N}_-]*)$/u);
   return match?{start:prefix.lastIndexOf('@'),end:input.selectionStart,query:match[1].toLowerCase()}:null;
@@ -99,7 +99,8 @@ function chatKeydown(event){
   }
   if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAgent();}
 }
-function usePrompt(index){setChatDraft(t(agentPrompts[index]));render();document.getElementById('agent-message')?.focus();}
+function usePrompt(index){setChatDraft(t(currentAgentPrompts()[index]));render();document.getElementById('agent-message')?.focus();}
+function currentAgentPrompts(){return staticMode(current())?['根据现有数据选择合适的 SKILL 模板，生成静态网站。','检查已有数据是否符合所选模板的字段要求。','查看已生成的网站，汇总记录数与模板信息。']:agentPrompts;}
 const agentPrompts=['根据项目目标，完成检索、复核、流程配置并创建处理任务。','检查当前进展，找出阻塞环节并处理可以解决的问题。','查看已完成任务和产物，汇总数据来源与处理结果。'];
 function stage(p){if(projectJobs(p.id).some(j=>j.status==='succeeded'))return 5;if(projectJobs(p.id).length||p.draft.locked)return 4;if(p.candidates.some(c=>c.decision==='accepted'))return 3;if(p.candidates.length)return 2;if(p.criteria&&p.query)return 1;return 0;}
 
@@ -108,8 +109,10 @@ function render(){
   const oldLog=document.querySelector('.chat-log');
   if(oldLog&&ui.chatKey)ui.chatScrolls[ui.chatKey]={top:oldLog.scrollTop,bottom:oldLog.scrollHeight-oldLog.scrollTop-oldLog.clientHeight<48};
   document.querySelectorAll('[data-detail-id]').forEach(el=>ui.chatDetails[el.dataset.detailId]=el.open);
-  if(!p&&!['projects','servers','agent','agent-center','settings'].includes(ui.page))ui.page='projects';
-  const pages={projects:allProjects,overview,search:searchPage,review:reviewPage,workflow:workflowPage,jobs:jobsPage,servers:serversPage,results:resultsPage,agent:agentPage,'agent-center':agentCenterPage,settings:settingsPage};
+  if(!p&&!['projects','servers','agent','agent-center','settings','skills'].includes(ui.page))ui.page='projects';
+  if(staticMode(p)&&['search','review','workflow','jobs','results'].includes(ui.page))ui.page='site';
+  if(p&&!staticMode(p)&&ui.page==='site')ui.page='overview';
+  const pages={site:sitePage,skills:skillsPage,projects:allProjects,overview,search:searchPage,review:reviewPage,workflow:workflowPage,jobs:jobsPage,servers:serversPage,results:resultsPage,agent:agentPage,'agent-center':agentCenterPage,settings:settingsPage};
   const body=(pages[ui.page]||allProjects)();
   const view=ui.page+'|'+ui.projectId,form=view+'|'+(ui.page==='review'?ui.candidateId:''),chatKey=ui.page==='agent'?conversationKey():'';
   const scrolls=view===ui.view?['.sidebar','.candidate-list','.aside-feed','.history-list',...(form===ui.form?['main']:[])].map(s=>[s,document.querySelector(s)?.scrollTop]):[];
@@ -132,14 +135,16 @@ function sidebar(p){
     <div class="label">${t('当前项目')}</div>
     <select class="project-selector" aria-label="${t('切换项目')}" onchange="selectProject(this.value)"><option value="" ${!p?'selected':''}>${t('工作空间对话')}</option>${db.projects.map(v=>`<option value="${v.id}" ${v.id===ui.projectId?'selected':''}>${esc(v.name)}</option>`).join('')}</select>
     ${item('overview','home','项目概览','','',!p)}
-    ${item('search','search','主题与检索','','',!p)}
+    ${staticMode(p)?item('site','grid','静态网站'): `    ${item('search','search','主题与检索','','',!p)}
     ${item('review','review','数据复核',p?pending(p).length:'','',!p)}
     ${item('workflow','flow','处理流程','','',!p)}
     ${item('jobs','activity','运行任务',needHelp||jobs.filter(active).length||'',needHelp?'warn':'',!p)}
     ${item('results','folder','数据与产物',projectArtifacts().length||'','',!p)}
+`}
     <div class="label">${t('工作空间')}</div>
     ${item('servers','server','服务器资源',db.servers.length||'')}
     ${item('agent-center','agent','Agent 中心')}
+    ${item('skills','file','SKILL 模板')}
     <div class="sidebar-bottom">${item('settings','settings','偏好设置')}<div class="version"><span>v0.2.0 · ${t('本地工作空间')}</span><button class="text-button" onclick="setLang('${lang==='en'?'zh':'en'}')">${lang==='en'?'中文':'English'}</button></div></div></nav>`;
 }
 
@@ -155,14 +160,15 @@ function aside(p){
     </aside>`;
 }
 function allProjects(){
-  return head(t('所有项目'),t('{p} 个项目 · {s} 台服务器 · {j} 个任务运行中',{p:db.projects.length,s:db.servers.length,j:db.jobs.filter(active).length}),btn(t('AI 助手'),"go('agent')",'','agent')+btn(t('新建项目'),'newProject()','primary','plus'))+`${db.projects.length?`<div class="grid-projects">${db.projects.map(p=>{const s=stage(p),jobs=projectJobs(p.id),attention=pending(p).length||jobs.some(j=>j.status==='needs_help');return `<button class="project-card" onclick="selectProject('${p.id}')"><div class="project-top"><h2>${esc(p.name)}</h2>${badge(t(stageNames[s]),attention?'orange':s?'':'gray')}</div><p>${esc(p.description||t('尚未填写研究目标'))}</p><div class="project-meta">${t('{c} 条候选 · {r} 条待复核 · {j} 个任务运行中 · {a} 份产物',{c:p.candidates.length,r:pending(p).length,j:jobs.filter(active).length,a:projectArtifacts(p.id).length})}</div><div class="progress"><i style="width:${s*20}%"></i></div></button>`;}).join('')}</div>`:empty(t('尚无项目'))}`;
+  return head(t('所有项目'),t('{p} 个项目 · {s} 台服务器 · {j} 个任务运行中',{p:db.projects.length,s:db.servers.length,j:db.jobs.filter(active).length}),btn(t('AI 助手'),"go('agent')",'','agent')+btn(t('新建项目'),'newProject()','primary','plus'))+modeCards()+`${db.projects.length?`<div class="grid-projects">${db.projects.map(p=>{const s=stage(p),jobs=projectJobs(p.id),attention=pending(p).length||jobs.some(j=>j.status==='needs_help');return `<button class="project-card" onclick="selectProject('${p.id}')"><div class="project-top"><h2>${esc(p.name)}</h2>${badge(staticMode(p)?t(p.site?'网站已生成':'待建立网站'):t(stageNames[s]),attention?'orange':s?'':'gray')}</div><p>${esc(p.description||t('尚未填写研究目标'))}</p><p class="muted">${modeTitle(p)}</p><div class="project-meta">${staticMode(p)?t('{n} 条记录',{n:p.site?.rows.length||0}):t('{c} 条候选 · {r} 条待复核 · {j} 个任务运行中 · {a} 份产物',{c:p.candidates.length,r:pending(p).length,j:jobs.filter(active).length,a:projectArtifacts(p.id).length})}</div><div class="progress"><i style="width:${staticMode(p)?(p.site?100:0):s*20}%"></i></div></button>`;}).join('')}</div>`:empty(t('尚无项目'))}`;
 }
 
 function overview(){
+  if(staticMode(current()))return sitePage();
   const p=current(),jobs=projectJobs(),s=stage(p),v=p.draft,accepted=p.candidates.filter(c=>c.decision==='accepted').length;
   const steps=[['确定主题',t(p.criteria&&p.query?'范围与检索式已保存':'填写研究范围与检索式'),'search'],['检索数据',p.candidates.length?t('{c} 条候选 · {s} 次检索',{c:p.candidates.length,s:p.searches.length}):t('尚未检索'),'search'],['复核纳入',t('{p} 待确认 · {a} 已纳入',{p:pending(p).length,a:accepted}),'review'],['定义流程',v.locked?t('v{v} 已锁定',{v:v.version}):t(p.versions.length?'正在编辑新版本':'尚未锁定'),'workflow'],['下载与处理',jobs.length?t('{r} 运行 · {d} 完成 · {h} 求助',{r:jobs.filter(active).length,d:jobs.filter(j=>j.status==='succeeded').length,h:jobs.filter(j=>j.status==='needs_help').length}):t('尚未创建任务'),'jobs']];
   const next=[['填写研究范围与检索式','search'],['运行检索','search'],['逐条复核候选数据','review'],['定义并锁定处理流程','workflow'],['查看运行任务','jobs'],['查看本地产物','results']][s];
-  return head(p.name,p.description||t('尚未填写研究目标'),btn(t('交给 AI 助手'),"go('agent')",'primary','agent'))+`<section class="card"><div class="stepper">${steps.map(([n,d,key],i)=>`<button class="step ${i<s?'done':i===s?'current':''}" onclick="go('${key}')"><span class="step-num">${i<s?I('check'):i+1}</span><strong>${t(n)}</strong><small>${esc(d)}</small></button>`).join('')}</div><div class="card-foot"><span class="muted">${t('当前阶段：')}${t(stageNames[s])}</span>${btn(t(next[0]),`go('${next[1]}')`,'primary small','arrow')}</div></section>`+(jobs.length?`<section class="card"><div class="card-head"><h2>${t('最近任务')}</h2><button class="text-button" onclick="go('jobs')">${t('全部 {n} 个',{n:jobs.length})} ${I('chevron')}</button></div>${jobsTable(jobs.slice(-5).reverse())}</section>`:'');
+  return head(p.name,p.description||t('尚未填写研究目标'),btn(t('交给 AI 助手'),"go('agent')",'primary','agent'))+collectionBoundary()+`<section class="card"><div class="stepper">${steps.map(([n,d,key],i)=>`<button class="step ${i<s?'done':i===s?'current':''}" onclick="go('${key}')"><span class="step-num">${i<s?I('check'):i+1}</span><strong>${t(n)}</strong><small>${esc(d)}</small></button>`).join('')}</div><div class="card-foot"><span class="muted">${t('当前阶段：')}${t(stageNames[s])}</span>${btn(t(next[0]),`go('${next[1]}')`,'primary small','arrow')}</div></section>`+(jobs.length?`<section class="card"><div class="card-head"><h2>${t('最近任务')}</h2><button class="text-button" onclick="go('jobs')">${t('全部 {n} 个',{n:jobs.length})} ${I('chevron')}</button></div>${jobsTable(jobs.slice(-5).reverse())}</section>`:'');
 }
 
 function searchPage(){
@@ -253,8 +259,8 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('input',e=>{const el=e.target;if(el.id&&el.id!=='agent-message'&&el.closest('main'))ui.dirty[el.id]=el.value;});
 document.addEventListener('click',e=>{const a=e.target.closest('a[href^="http"]');if(!a)return;e.preventDefault();run(()=>request('openURL',{url:a.href}));});
 
-function newProject(){modal(t('新建数据库项目'),field(t('项目名称'),'new-name')+field(t('研究目标'),'new-desc','','textarea'),btn(t('创建项目'),'createProject()','primary','plus'));}
-function createProject(){run(async()=>{const name=val('new-name');if(!name)throw new Error(t('请输入项目名称'));await act('createProject',{name,description:val('new-desc')},'项目已创建');ui.projectId=db.projects.at(-1).id;closeModal();syncChatState();go('agent');});}
+function newProject(mode='static'){modal(t('新建项目'),`<div class="field"><label for="new-mode">${t('项目模式')}</label><select id="new-mode"><option value="static" ${mode==='static'?'selected':''}>${t('已有数据 · 静态网站')}</option><option value="collect" ${mode==='collect'?'selected':''}>${t('收集数据 · 分析准备')}</option></select></div>`+field(t('项目名称'),'new-name')+field(t('研究目标'),'new-desc','','textarea'),btn(t('创建项目'),'createProject()','primary','plus'));}
+function createProject(){const body={name:val('new-name'),description:val('new-desc'),mode:val('new-mode')};run(async()=>{if(!body.name)throw new Error(t('请输入项目名称'));const reply=await act('createProject',body,'项目已创建');ui.projectId=reply.result.projectId;closeModal();syncChatState();go(body.mode==='static'?'site':'overview');});}
 function scopeBody(){const p=current();return {...projectMeta(p),name:val('project-name')||p.name,description:val('topic'),organism:val('organism'),assay:val('assay'),criteria:val('criteria'),query:val('query'),source:val('source')};}
 function saveScope(){run(()=>act('saveProject',scopeBody(),'研究范围与检索策略已保存'));}
 function runSearch(){run(async()=>{const body=scopeBody(),limit=Number(val('search-limit'));if(!body.query)throw new Error(t('请填写检索表达式'));await act('saveProject',body,'');toast(t('正在检索，请等待来源服务返回…'));const r=(await act('search',{...body,limit},'')).result;modal(t('检索已完成'),code(t('来源：{s}\n命中总数：{t}\n本次获取：{f}\n合并后新增：{a}',{s:r.source,t:r.total,f:r.fetched,a:r.added}))+`<p class="muted">${t('达到获取上限时，请调整上限或补充检索式。结果尚未复核。')}</p>`,btn(t('开始复核'),"closeModal();go('review')",'primary','arrow'));});}
@@ -319,5 +325,51 @@ function tick(){run(()=>act('tick',{},'已发起一次巡检'));}
 function askAgent(aid,jid){const j=db.jobs.find(v=>v.id===jid);if(!j)return;ui.projectId=j.projectId;syncChatState();closeModal();setChatDraft('@'+aid+' '+t('请诊断任务 {a}（id {i}）：读取其日志与服务器状态，判断失败原因并给出具体修复步骤。',{a:j.accession,i:j.id}));go('agent');sendAgent();}
 function artifact(aid){run(async()=>{const a=db.artifacts.find(x=>x.id===aid),r=await request('artifact?id='+encodeURIComponent(aid));modal(a.name+' · '+t('预览'),`<p class="muted mono">${esc(a.path)}<br>SHA-256 ${esc(a.sha256)}</p><p class="muted">${t('最多预览前 64 KiB。')}</p>${code(r.text)}`);});}
 function exportManifest(){run(async()=>{const r=await request('exportManifest',{projectId:ui.projectId});toast(t('产物清单已导出到 {p}',{p:r.result}));});}
+
+const staticMode=p=>p?.mode==='static';
+const modeTitle=p=>t(staticMode(p)?'已有数据 · 静态网站':'收集数据 · 分析准备');
+function modeCards(){
+  return `<div class="mode-grid"><button class="mode-card" onclick="newProject('static')"><span class="mode-icon">${I('grid')}</span><small>${t('模式一 · 已有数据')}</small><h2>${t('用现有数据建立网站')}</h2><p>${t('选择 SKILL 模板，导入数据，预览并下载静态网页。无需检索或配置数据库。')}</p><strong>${t('开始静态建站')} ${I('arrow')}</strong></button><button class="mode-card" onclick="newProject('collect')"><span class="mode-icon">${I('search')}</span><small>${t('模式二 · 需要收集')}</small><h2>${t('收集与分析数据')}</h2><p>${t('检索、复核、处理分析并归档数据，为后续动态数据库网站做好准备。')}</p><strong>${t('开始收集数据')} ${I('arrow')}</strong></button></div>`;
+}
+function collectionBoundary(){return `<div class="mode-note">${I('database')}<span>${t('当前阶段：数据收集与分析。数据库接入和动态网站开发留待后续。')}</span></div>`;}
+function siteURL(pid=ui.projectId){return '/api/site?projectId='+encodeURIComponent(pid);}
+function siteTemplates(){return (db.skills||[]).filter(s=>s.enabled&&s.template);}
+function selectedSiteTemplate(){return siteTemplates().find(s=>s.id===val('site-skill'));}
+function templateHint(){
+ const skill=selectedSiteTemplate(),el=document.getElementById('site-template-hint');
+ if(el)el.textContent=skill?t('必需字段：{fields} · {layout}',{fields:skill.template.requiredColumns?.join(', ')||'—',layout:t(skill.template.layout==='cards'?'卡片布局':'表格布局')}):t('请先启用或导入一个网站模板 SKILL。');
+}
+function sitePage(){
+ const p=current(),site=p.site,templates=siteTemplates();
+ const savedSkill=templates.find(s=>s.name===site?.skillName),selected=(ui.form===ui.page+'|'+ui.projectId+'|'?ui.dirty['site-skill']:'')||savedSkill?.id||templates[0]?.id;
+ const skill=templates.find(s=>s.id===selected);
+ const data=site?JSON.stringify(site.rows.map(row=>Object.fromEntries(site.columns.map((col,i)=>[col,row[i]]))),null,2):'';
+ return head(t('静态网站'),t('已有数据 → 选择 SKILL 模板 → 生成静态网页'),btn(t('AI 助手'),"go('agent')",'','agent'))+`<section class="card"><div class="card-head"><h2>${t('选择数据库模板')}</h2>${btn(t('管理 SKILL'),"go('skills')",'small','settings')}</div><div class="content-pad"><div class="field"><label for="site-skill">${t('网站模板 SKILL')}</label><select id="site-skill" onchange="ui.dirty[this.id]=this.value;templateHint()">${templates.length?templates.map(s=>`<option value="${s.id}" ${s.id===selected?'selected':''}>${esc(t(s.template.label))} · ${esc(s.name)}</option>`).join(''):`<option value="">${t('暂无可用模板')}</option>`}</select></div><p class="muted" id="site-template-hint">${esc(skill?t('必需字段：{fields} · {layout}',{fields:skill.template.requiredColumns?.join(', ')||'—',layout:t(skill.template.layout==='cards'?'卡片布局':'表格布局')}):t('请先启用或导入一个网站模板 SKILL。'))}</p></div></section><section class="card"><div class="card-head"><h2>${t('网站内容')}</h2>${badge(modeTitle(p),'blue')}</div><div class="content-pad">${field(t('网站标题'),'site-title',site?.title||p.name)}${field(t('网站简介'),'site-description',site?.description||p.description,'textarea')}<div class="form-grid"><div class="field"><label for="site-format">${t('数据格式')}</label><select id="site-format"><option value="json">JSON</option><option value="csv">CSV</option><option value="tsv">TSV</option></select></div><div class="field"><label for="site-file">${t('导入数据文件')}</label><input id="site-file" type="file" accept=".csv,.tsv,.json" onchange="readSiteFile(this)"></div></div>${field(t('数据内容'),'site-data',data,'textarea','class="mono site-data" spellcheck="false"')}<p class="muted">${t('支持 UTF-8 CSV、TSV 或 JSON 对象数组，最多 2 MB、5000 行、100 列。表头须与模板字段一致。')}</p></div><div class="card-foot"><span class="muted">${t('生成的 HTML 可独立打开，数据保存在网页内。')}</span>${btn(t('生成静态网站'),'buildSite()','primary','play',!templates.length||ui.busy.has('buildStaticSite'))}</div></section>${site?`<section class="card"><div class="card-head"><div><h2>${t('网站预览')}</h2><small>${esc(site.skillName)} · ${t('{n} 条记录',{n:site.rows.length})} · ${date(site.builtAt)}</small></div>${btn(t('下载 HTML'),'downloadSite()','small','down')}</div><iframe class="site-preview" title="${t('网站预览')}" sandbox="allow-scripts" src="${siteURL()}&v=${encodeURIComponent(site.builtAt)}"></iframe></section>`:empty(t('选择模板并导入已有数据，即可生成第一个网站。'))}`;
+}
+function readSiteFile(input){
+ const file=input.files?.[0],pid=ui.projectId;if(!file)return;
+ run(async()=>{if(file.size>2*1024*1024)throw new Error(t('数据文件不能超过 2 MB'));const data=await file.text();if(ui.projectId!==pid||!input.isConnected)return;const format=file.name.toLowerCase().endsWith('.csv')?'csv':file.name.toLowerCase().endsWith('.tsv')?'tsv':'json';document.getElementById('site-data').value=data;document.getElementById('site-format').value=format;ui.dirty['site-data']=data;ui.dirty['site-format']=format;});
+}
+function buildSite(){
+ const body={projectId:ui.projectId,skillId:val('site-skill'),name:val('site-title'),description:val('site-description'),format:val('site-format'),data:document.getElementById('site-data')?.value||''};
+ run(async()=>{await act('buildStaticSite',body,'静态网站已生成');});
+}
+function downloadSite(){
+ const pid=ui.projectId;
+ run(async()=>{const res=await fetch(siteURL(pid)+'&download=1');if(!res.ok)throw new Error(t('下载失败'));const blob=await res.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='index.html';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);});
+}
+function skillsPage(){
+ return head('SKILL',t('用 SKILL 定义不同类型数据库的字段和静态展示模板，也可为 Agent 提供工作指引。'),btn(t('导入 SKILL.md'),'importSkillModal()','primary','plus'))+`<div class="mode-note">${I('file')}<span>${t('模板随 SKILL.md 导入。当前支持表格和卡片布局；技能通过已有工具执行，不自动运行附带脚本。')}</span></div><div class="grid-projects">${(db.skills||[]).map(s=>`<section class="card skill-card"><div class="project-top"><h2>${esc(s.template?t(s.template.label):s.name)}</h2>${badge(t(s.enabled?'已启用':'已停用'),s.enabled?'':'gray')}</div><p class="mono">${esc(s.name)}</p><p class="muted">${esc(s.description)}</p>${s.template?`<p>${esc(t(s.template.layout==='cards'?'卡片布局':'表格布局'))} · ${esc((s.template.requiredColumns||[]).join(', '))}</p>`:''}<div class="actions">${btn(t('查看'),'viewSkill(\''+s.id+'\')','small')}${btn(t(s.enabled?'停用':'启用'),`toggleSkill('${s.id}',${!s.enabled})`,'small')}${btn(t('删除'),`deleteSkillModal('${s.id}')`,'small','trash')}</div></section>`).join('')||empty(t('暂无 SKILL，请导入 SKILL.md。'))}</div>`;
+}
+function importSkillModal(){
+ modal(t('导入 SKILL.md'),`<p class="muted">${t('导入包含 name、description 和正文的 SKILL.md。网站模板在 metadata.dba 中声明布局与字段。')}</p><div class="field"><label for="skill-file">SKILL.md</label><input id="skill-file" type="file" accept=".md" onchange="readSkillFile(this)"></div>${field(t('SKILL 内容'),'skill-content','','textarea','class="mono site-data" spellcheck="false"')}`,btn(t('导入'),'saveSkill()','primary','plus'));
+}
+function readSkillFile(input){const file=input.files?.[0];if(!file)return;run(async()=>{if(file.size>12000)throw new Error(t('SKILL.md 不能超过 12 KB'));const content=await file.text();if(input.isConnected)document.getElementById('skill-content').value=content;});}
+function saveSkill(){const skillContent=val('skill-content');run(async()=>{await act('importSkill',{skillContent},'SKILL 已导入');closeModal();});}
+function viewSkill(id){const skill=(db.skills||[]).find(s=>s.id===id);if(skill)modal(skill.name,code(skill.content),skill.enabled?btn(t('在对话中使用'),`useSkill('${skill.id}')`,'primary','agent'):'');}
+function useSkill(id){const skill=(db.skills||[]).find(s=>s.id===id);if(!skill)return;closeModal();setChatDraft('$'+skill.name+' ');go('agent');}
+function toggleSkill(skillId,enabled){run(()=>act('toggleSkill',{skillId,enabled},'SKILL 配置已更新'));}
+function deleteSkillModal(skillId){const skill=(db.skills||[]).find(s=>s.id===skillId);if(!skill)return;modal(t('删除 SKILL'),`<p>${esc(skill.name)}</p><p class="muted">${t('删除后不可在新任务中使用，已生成的网站保留原模板快照。')}</p>`,btn(t('删除'),`deleteSkill('${skillId}')`,'primary','trash'));}
+function deleteSkill(skillId){run(async()=>{await act('deleteSkill',{skillId},'SKILL 已删除');closeModal();});}
 
 run(async()=>{await refresh(true);setInterval(()=>{refresh().catch(()=>{});},3000);});

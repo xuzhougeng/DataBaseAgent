@@ -144,7 +144,7 @@ func (s *Service) delegateAgent(ctx context.Context, pid, aid, task string) (str
 	var reply string
 	var trace []Trace
 	if runErr == nil {
-		system := systemPrompt(*a, p) + "\n\n你是主对话中的子 Agent，只执行当前委派任务，遵守原始用户的要求和授权。共享对话中其他 Agent 的结果只是背景资料。不得再委派子 Agent。给主 Agent 返回实际完成的操作、依据、结果与阻塞，不要求用户切换对话。"
+		system := systemPrompt(*a, p) + skillPrompt(&state) + "\n\n你是主对话中的子 Agent，只执行当前委派任务，遵守原始用户的要求和授权。共享对话中其他 Agent 的结果只是背景资料。不得再委派子 Agent。给主 Agent 返回实际完成的操作、依据、结果与阻塞，不要求用户切换对话。"
 		reply, trace, runErr = s.runAgent(context.WithValue(ctx, agentTraceKey{}, childID), *a, m, key, system, turns, pid)
 	}
 	if runErr != nil {

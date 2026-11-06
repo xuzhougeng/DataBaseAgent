@@ -29,6 +29,26 @@ func Handler(s *Service, assets fs.FS) http.Handler {
 		}
 		write := func(v any) { _ = json.NewEncoder(w).Encode(v) }
 		switch {
+		case r.Method == "GET" && r.URL.Path == "/api/site":
+			state := s.Store.Snapshot()
+			p, err := projectByID(&state, r.URL.Query().Get("projectId"))
+			if err != nil || p.Site == nil {
+				w.WriteHeader(404)
+				write(map[string]string{"error": "静态网站尚未生成"})
+				return
+			}
+			html, err := renderStaticSite(p.Site)
+			if err != nil {
+				w.WriteHeader(500)
+				write(map[string]string{"error": err.Error()})
+				return
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Content-Security-Policy", "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'")
+			if r.URL.Query().Get("download") == "1" {
+				w.Header().Set("Content-Disposition", `attachment; filename="index.html"`)
+			}
+			_, _ = w.Write([]byte(html))
 		case r.Method == "GET" && r.URL.Path == "/api/state":
 			state := s.Store.Snapshot()
 			envSet, keySaved, ready := map[string]bool{}, map[string]bool{}, map[string]bool{}
