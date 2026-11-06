@@ -82,7 +82,9 @@ GPSAdb 2.0 收录人类细胞系的单基因扰动 RNA-seq 数据。`2026.10.22`
 
 在偏好设置页添加模型时，选择协议并直接填写 API 基础地址、模型 ID 和 API Key。无需认证的服务可将密钥留空。API Key 保存在系统凭据库，已有模型仍可读取原先配置的环境变量。支持 OpenAI Chat Completions 兼容协议（涵盖 DeepSeek、Qwen、Ollama、vLLM 等）、Anthropic Messages 和 Google Gemini。每个 Agent 可选择不同模型，未选择时使用列表中的第一个。[模型配置指南](docs/models.md)
 
-检索和模型 HTTP 请求遵循启动进程的 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量。GitHub 操作及构建脚本使用 `http://127.0.0.1:7897` 代理。SSH 采用本机密钥或 SSH Agent，强制校验已知主机，不支持交互式密码输入。
+偏好设置中的 **MCP 插件** 默认带有 GitHub 和 Cloudflare。填写 GitHub PAT / Cloudflare API Token 后保存并测试连接，主 Agent 即可按需发现和调用工具，调用过程保留在对话记录中。也可添加 Streamable HTTP 或本地 STDIO 服务，设置超时、工具允许列表与禁用列表。Token 保存在系统凭据库，也可从启动环境变量读取；当前不含浏览器 OAuth 登录。[MCP 配置指南](docs/mcp.md)
+
+检索、模型和 MCP HTTP 请求遵循启动进程的 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量。GitHub 操作及构建脚本使用 `http://127.0.0.1:7897` 代理。SSH 采用本机密钥或 SSH Agent，强制校验已知主机，不支持交互式密码输入。
 
 ## 当前边界
 
@@ -94,7 +96,7 @@ GPSAdb 2.0 收录人类细胞系的单基因扰动 RNA-seq 数据。`2026.10.22`
 
 ```bash
 go test ./... && go test -race ./internal/workbench && go vet ./...
-node --check frontend/workbench.js && node --check frontend/conversations.js
+node --check frontend/workbench.js && node --check frontend/conversations.js && node --check frontend/mcp.js
 node scripts/check-i18n.js && node --test scripts/test-conversations.js
 ```
 

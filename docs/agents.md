@@ -81,6 +81,7 @@ The separate **Agent review** button on the Review page still generates suggesti
 | `list_artifacts`, `export_manifest` | Inspect archived files and export provenance |
 | `get_settings`, `update_settings` | Read configuration and patch monitoring policy |
 | `save_model`, `delete_model`, `save_agent`, `reset_agent` | Manage model profiles, instructions, model assignment and budgets |
+| `list_mcp_servers`, `list_mcp_tools`, `call_mcp_tool` | Main-agent-only discovery and invocation of configured MCP plugins; [setup, credentials and limits](mcp.md) |
 
 Mutation tools call `Service.Dispatch`, the same command layer used by forms. Partial updates preserve omitted fields; provided arrays replace entire lists. Invalid commands roll back through `Store.Update`. Pipeline versions, queued inputs, CPU quotas, output-path validation and launch de-duplication apply equally to AI and manual operations.
 

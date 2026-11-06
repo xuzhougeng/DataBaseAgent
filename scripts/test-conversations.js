@@ -1,9 +1,9 @@
 // Run with node --test scripts/test-conversations.js. No browser or npm dependencies.
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 function fixture(){
-  const saved=new Map(),document={documentElement:{},getElementById:()=>null,querySelector:()=>null,querySelectorAll:()=>[],addEventListener:()=>{},activeElement:null};
+  const saved=new Map(),modalRoot={innerHTML:''},document={documentElement:{},getElementById:id=>id==='modal-root'?modalRoot:null,querySelector:()=>null,querySelectorAll:()=>[],addEventListener:()=>{},activeElement:null};
   const ctx=vm.createContext({document,navigator:{language:'en'},localStorage:{getItem:k=>saved.get(k)||null,setItem:(k,v)=>saved.set(k,v)},window:{innerWidth:1280},TextEncoder,crypto:{randomUUID:()=> 'client-test'},setTimeout:()=>{},clearTimeout:()=>{},setInterval:()=>{},console});
-  for(const name of ['i18n','conversations','workbench']){
+  for(const name of ['i18n','conversations','mcp','workbench']){
     let source=fs.readFileSync(`frontend/${name}.js`,'utf8');
     if(name==='workbench')source=source.slice(0,source.lastIndexOf('run(async()=>{await refresh(true);'));
     vm.runInContext(source,ctx);
@@ -48,7 +48,7 @@ test('tool timeline escapes untrusted arguments, results, and titles',()=>{
   assert.ok(!html.includes('<script>'));
   assert.ok(html.includes('Failed'));
   assert.ok(html.includes('123 ms'));
-  const history=f.eval('chatHistoryPanel()');
+  const history=f.eval('chatHistoryBody()');
   assert.ok(!history.includes('<img'));
 });
 
@@ -112,4 +112,28 @@ test('mention matching ignores emails and keeps the main conversation selected',
   assert.ok(html.includes('id="agent-mentions"'));
   assert.ok(!html.includes('role="tablist"'));
   assert.ok(html.includes('Delegate to a subagent'));
+});
+
+test('MCP settings escape plugin data and distinguish configuration from connection',()=>{
+  const f=fixture();
+  f.eval(`db.settings.mcpServers=[{id:'github',name:'GitHub <img src=x>',transport:'http',url:'https://api.githubcopilot.com/mcp/'},{id:'cloudflare',name:'Cloudflare',transport:'http',url:'https://mcp.cloudflare.com/mcp'}];meta.mcpStates={github:'needs_token',cloudflare:'configured'};`);
+  const html=f.eval('settingsPage()');
+  assert.ok(html.includes('GitHub &lt;img'));
+  assert.ok(!html.includes('<img'));
+  assert.ok(html.includes('Token required'));
+  assert.ok(html.includes('Not tested'));
+  assert.ok(html.includes('mcpModal(\'cloudflare\')'));
+});
+
+test('MCP editor keeps tokens blank and exposes both transports and tool filters',()=>{
+  const f=fixture();
+  f.eval(`db.settings.mcpServers=[{id:'github',name:'GitHub',transport:'http',url:'https://api.githubcopilot.com/mcp/',enabled:true,startupTimeoutSec:20,toolTimeoutSec:60,enabledTools:['get_me'],disabledTools:['delete_repo']}];meta.mcpKeySaved={github:true};this.captured='';modal=(title,body,footer)=>{this.captured=body+footer};updateMCPTransport=()=>{};document.getElementById=()=>({focus:()=>{}});mcpModal('github');`);
+  const html=f.eval('captured');
+  assert.match(html,/id="mcp-token" value="" type="password"/);
+  assert.ok(html.includes('value="stdio"'));
+  assert.ok(html.includes('get_me'));
+  assert.ok(html.includes('delete_repo'));
+  assert.ok(html.includes('Remove saved token'));
+  assert.ok(html.includes('Test connection'));
+  assert.ok(html.includes('browser OAuth sign-in is not included'));
 });

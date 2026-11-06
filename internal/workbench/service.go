@@ -85,6 +85,8 @@ type Request struct {
 	Agent          Agent        `json:"agent"`
 	Model          ModelProfile `json:"model"`
 	APIKey         *string      `json:"apiKey,omitempty"` // omitted keeps the stored key; empty removes it
+	MCPServer      MCPServer    `json:"mcpServer"`
+	MCPServerID    string       `json:"mcpServerId"`
 }
 
 func decode(raw json.RawMessage) (Request, error) {
@@ -98,6 +100,10 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 		return nil, err
 	}
 	switch action {
+	case "saveMCPServer", "deleteMCPServer":
+		return s.manageMCPServer(action, r)
+	case "testMCPServer":
+		return s.testMCPServer(ctx, r.MCPServerID)
 	case "search":
 		return s.Search(ctx, r)
 	case "probeServer":
