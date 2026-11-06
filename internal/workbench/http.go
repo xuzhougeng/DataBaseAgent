@@ -43,7 +43,13 @@ func Handler(s *Service, assets fs.FS) http.Handler {
 			for i := range state.Settings.Models {
 				state.Settings.Models[i].APIKeyRef = ""
 			}
-			write(map[string]any{"state": state, "root": s.Store.Root(), "envSet": envSet, "keySaved": keySaved, "ready": ready, "agentRuns": s.AgentRuns(), "chatErrors": s.ChatErrors()})
+			mcpStates, mcpKeySaved := map[string]string{}, map[string]bool{}
+			for i, v := range state.Settings.MCPServers {
+				mcpStates[v.ID] = mcpStatus(v)
+				mcpKeySaved[v.ID] = v.TokenRef != ""
+				state.Settings.MCPServers[i].TokenRef = ""
+			}
+			write(map[string]any{"state": state, "root": s.Store.Root(), "envSet": envSet, "keySaved": keySaved, "ready": ready, "agentRuns": s.AgentRuns(), "chatErrors": s.ChatErrors(), "mcpStates": mcpStates, "mcpKeySaved": mcpKeySaved})
 		case r.Method == "GET" && r.URL.Path == "/api/artifact":
 			text, e := s.PreviewArtifact(r.URL.Query().Get("id"))
 			if e != nil {

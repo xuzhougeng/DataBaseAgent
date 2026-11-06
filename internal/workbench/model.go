@@ -233,6 +233,7 @@ type Settings struct {
 	MaxRetries      int            `json:"maxRetries"`
 	Models          []ModelProfile `json:"models"`
 	Agents          []Agent        `json:"agents"`
+	MCPServers      []MCPServer    `json:"mcpServers"`
 }
 
 func now() string { return time.Now().UTC().Format(time.RFC3339) }

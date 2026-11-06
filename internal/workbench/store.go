@@ -70,6 +70,12 @@ func Open(root string) (*Store, error) {
 	if s.state.Settings.Models == nil {
 		s.state.Settings.Models = []ModelProfile{}
 	}
+	// Only seed an absent field. An explicitly empty list means the user removed
+	// all plugins and must remain empty across restarts.
+	if s.state.Settings.MCPServers == nil {
+		s.state.Settings.MCPServers = defaultMCPServers()
+		changed = true
+	}
 	s.state.Settings.Agents = withPresets(s.state.Settings.Agents)
 	if s.state.Conversations == nil {
 		s.state.Conversations = []Conversation{}

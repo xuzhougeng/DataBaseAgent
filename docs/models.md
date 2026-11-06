@@ -71,6 +71,8 @@ Use protocol `anthropic`, base `https://api.anthropic.com/v1`, your chosen model
 
 Use protocol `gemini`, base `https://generativelanguage.googleapis.com/v1beta`, your model ID from Google AI Studio and your Gemini API key.
 
+Function declarations use `parametersJsonSchema` so arbitrary nested MCP tool arguments retain their JSON Schema representation. See Google's [FunctionDeclaration reference](https://ai.google.dev/api/generate-content#FunctionDeclaration).
+
 **OpenAI-compatible gateway with a custom prefix**
 
 Enter exactly the prefix the gateway documents (for example `https://gateway.example.com/openai/v1`). DBA only appends `/chat/completions`.

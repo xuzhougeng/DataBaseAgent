@@ -84,6 +84,7 @@ Everything runs on your machine. DBA writes workspace state to a single JSON fil
 - **Verified archive** — per-file SHA-256, resumable transfer with `.partial` files, 100 GiB per-file ceiling, path confinement on both ends, `run_manifest.json` provenance.
 - **Agent team** — five preset personas with distinct icons, tool scopes and models; a tool-use loop with step budgets, forced final answers and a persisted trace of every call.
 - **Provider-agnostic LLM layer** — one neutral conversation model, three wire protocols, per-agent model selection and direct API key entry.
+- **MCP plugins** — GitHub and Cloudflare presets, custom Streamable HTTP / STDIO servers, secure token storage, connection tests, tool filters, and traced on-demand calls from the main assistant. [Setup guide](docs/mcp.md)
 - **Local & portable** — single binary, embedded assets, no database server, works offline except for discovery and model calls.
 
 ## Agents
@@ -153,6 +154,7 @@ The companion manuscript case follows a FAM167A knockdown from GEO screening thr
 | [docs/architecture.md](docs/architecture.md) | Components, data model, job state machine, persistence, security boundaries |
 | [docs/agents.md](docs/agents.md) | Agent loop, presets, tool catalogue, guardrails, trace format, customization |
 | [docs/models.md](docs/models.md) | Protocol adapters, request mapping, keys, proxies, provider recipes |
+| [docs/mcp.md](docs/mcp.md) | GitHub / Cloudflare presets, custom MCP servers, authentication, tool access and limitations |
 | [docs/discovery.md](docs/discovery.md) | Search adapters, paging, limits, de-duplication, import format |
 | [docs/pipelines.md](docs/pipelines.md) | Pipeline contract, environment variables, remote protocol, recovery, sync, manifest |
 | [docs/build.md](docs/build.md) | Platform matrix, build scripts, installers, cross-compilation, workspaces |
@@ -162,7 +164,7 @@ The companion manuscript case follows a FAM167A knockdown from GEO screening thr
 
 ```bash
 go test ./... && go test -race ./internal/workbench && go vet ./...
-node --check frontend/workbench.js && node --check frontend/conversations.js
+node --check frontend/workbench.js && node --check frontend/conversations.js && node --check frontend/mcp.js
 node scripts/check-i18n.js && node --test scripts/test-conversations.js
 ```
 

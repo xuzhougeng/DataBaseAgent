@@ -295,7 +295,8 @@ func geminiCall(ctx context.Context, base, key, model, system string, turns []Tu
 		for _, d := range tools {
 			fn := map[string]any{"name": d.Name, "description": d.Description}
 			if d.Params != nil {
-				fn["parameters"] = d.Params
+				// Use JSON Schema for open MCP argument objects as well.
+				fn["parametersJsonSchema"] = d.Params
 			}
 			defs = append(defs, fn)
 		}
