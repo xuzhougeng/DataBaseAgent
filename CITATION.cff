@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use DataBaseAgent in your research, please cite the accompanying manuscript."
+type: software
+title: DataBaseAgent
+authors:
+  - family-names: Qin
+    given-names: Guihui
+  - family-names: Xu
+    given-names: Zhou-Geng
+repository-code: https://github.com/xuzhougeng/DataBaseAgent
+url: https://github.com/xuzhougeng/DataBaseAgent
+preferred-citation:
+  type: unpublished
+  title: "DataBaseAgent: a local desktop workbench for building and publishing topic-specific biological data repositories with human-gated AI agents"
+  authors:
+    - family-names: Qin
+      given-names: Guihui
+    - family-names: Xu
+      given-names: Zhou-Geng
+  year: 2026
+  notes: "Manuscript submitted to bioRxiv; a public bioRxiv DOI has not yet been verified."
+  url: https://github.com/xuzhougeng/DataBaseAgent/blob/main/docs/manuscript/manuscript.pdf

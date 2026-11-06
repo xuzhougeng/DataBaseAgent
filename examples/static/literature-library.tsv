@@ -1,0 +1,4 @@
+title	summary	id	organism	cell	perturbed_gene	perturbation	demo
+Transcriptomic profiling of TP53 loss in human epithelial cells	演示摘要：对 TP53 敲除细胞及非靶向对照进行三次生物学重复的 RNA-seq 测序。	DEMO-0142	Homo sapiens	A549	TP53	CRISPR knockout	设计稿示例
+Context-dependent transcriptional responses to MYC silencing	演示摘要：对多个细胞系开展 MYC 沉默实验，数据附件未明确全部 control 与 treatment 的配对关系。	DEMO-0198	Homo sapiens	多细胞系	MYC	siRNA knockdown	设计稿示例
+Perturbation of chromatin regulators reshapes cell identity	演示摘要：通过 pooled CRISPR screen 定量测量细胞增殖与存活，不包含 RNA-seq 数据。	DEMO-0236	Homo sapiens	K562	多基因	CRISPR screen	设计稿示例

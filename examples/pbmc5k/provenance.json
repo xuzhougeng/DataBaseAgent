@@ -1,0 +1,24 @@
+{
+  "dataset": "5k_pbmc_v3",
+  "provider": "10x Genomics",
+  "license": "CC BY 4.0",
+  "source_page": "https://www.10xgenomics.com/datasets/5-k-peripheral-blood-mononuclear-cells-pbm-cs-from-a-healthy-donor-v-3-chemistry-3-1-standard-3-0-2",
+  "source_archive": "https://cf.10xgenomics.com/samples/cell-exp/3.0.2/5k_pbmc_v3/5k_pbmc_v3_analysis.tar.gz",
+  "source_sha256": "509b88dbc939d6ae350972b6b0ff58ee337d4443a41c9d9d6881c2d5590f1806",
+  "cells": 5025,
+  "embedding": "Cell Ranger 3.0.2 t-SNE (2 components)",
+  "clustering": "Cell Ranger graphclust",
+  "cluster_counts": {
+    "Cluster 1": 1468,
+    "Cluster 2": 925,
+    "Cluster 3": 654,
+    "Cluster 4": 548,
+    "Cluster 5": 471,
+    "Cluster 6": 405,
+    "Cluster 7": 288,
+    "Cluster 8": 266
+  },
+  "cell_type_annotations": false,
+  "subsampling": false,
+  "cells_tsv_sha256": "77312f1dabc64d4e8694b815528d5362fb7d4ac28c6a91cfa5b2546d1f0ea285"
+}

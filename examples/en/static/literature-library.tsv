@@ -1,0 +1,4 @@
+title	summary	id	organism	cell	perturbed_gene	perturbation	demo
+Transcriptomic profiling of TP53 loss in human epithelial cells	Demo abstract: RNA-seq of TP53 knockout cells and non-targeting controls, three biological replicates each.	DEMO-0142	Homo sapiens	A549	TP53	CRISPR knockout	Design demo
+Context-dependent transcriptional responses to MYC silencing	Demo abstract: MYC silencing across several cell lines; the data files do not state every control–treatment pairing.	DEMO-0198	Homo sapiens	Multiple cell lines	MYC	siRNA knockdown	Design demo
+Perturbation of chromatin regulators reshapes cell identity	Demo abstract: a pooled CRISPR screen measuring cell proliferation and survival; no RNA-seq data.	DEMO-0236	Homo sapiens	K562	Multiple genes	CRISPR screen	Design demo

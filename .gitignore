@@ -1,0 +1,19 @@
+/bin/
+/.tmp/
+/workspace/
+*.exe
+*.syso
+!/dba_windows_*.syso
+*.log
+node_modules/
+.tmp/
+.DS_Store
+
+# Local preprint submission administration and receipts
+/docs/manuscript/submission/metadata.json
+/docs/manuscript/submission/biorxiv-*.jpg
+/docs/manuscript/submission/citation-renumbering.json
+
+# Local development and acceptance artifacts
+/.claude/
+/outputs/

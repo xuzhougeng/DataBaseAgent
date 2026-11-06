@@ -1,0 +1,18 @@
+[
+  {
+    "source": "GEO",
+    "accession": "GSE299540",
+    "organism": "Homo sapiens",
+    "title": "Autoimmunity-associated DIORA1 binds the MRCK family of serine/threonine kinases and controls cell motility",
+    "abstract": "RNA-seq profiling of SK-N-SH and SK-N-AS neuroblastoma cell lines following knockdown of the gene FAM167A (DIORA1).",
+    "url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE299540"
+  },
+  {
+    "source": "GEO",
+    "accession": "GSE139235",
+    "organism": "Homo sapiens",
+    "title": "Tumor-derived Schwann-like cells promote neuroblastoma survival through secreted trophic factors",
+    "abstract": "Sublines of N- and S-type cells were isolated from an early passage of SK-N-SH NB cell line.",
+    "url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE139235"
+  }
+]

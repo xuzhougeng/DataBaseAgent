@@ -1,0 +1,88 @@
+{
+  "examples": [
+    {
+      "id": "static-research-catalog",
+      "mode": "static",
+      "title": "研究数据目录",
+      "summary": "把三条 GPSA 扰动转录组记录生成可搜索的表格网站，每条记录一行，可下载为单个 HTML。",
+      "skill": "research-catalog",
+      "siteData": "static/research-catalog.tsv",
+      "project": {
+        "name": "示例 · GPSA 研究数据目录",
+        "description": "整合人类基因扰动转录组，构建可检索的表达响应数据库。记录来自 DBA 设计稿，仅作演示。"
+      },
+      "projectEn": {
+        "name": "Example · GPSA research catalogue",
+        "description": "Human gene-perturbation transcriptomes in a searchable expression-response database. Records come from the DBA design prototype and are for demonstration only."
+      },
+      "groups": [
+        {"id": "data", "title": "网站数据", "note": "新建“已有数据”项目，在静态网站页导入此文件，即可生成同样的网站。"}
+      ],
+      "files": [
+        {"path": "static/research-catalog.tsv", "en": "en/static/research-catalog.tsv", "group": "data", "title": "数据文件"}
+      ]
+    },
+    {
+      "id": "static-literature-library",
+      "mode": "static",
+      "title": "文献资源库",
+      "summary": "同一批记录以卡片展示标题与摘要，适合整理文献或资源清单。",
+      "skill": "literature-library",
+      "siteData": "static/literature-library.tsv",
+      "project": {
+        "name": "示例 · GPSA 文献资源库",
+        "description": "GPSA 扰动转录组研究的标题与摘要。记录来自 DBA 设计稿，仅作演示。"
+      },
+      "projectEn": {
+        "name": "Example · GPSA literature library",
+        "description": "Titles and abstracts of GPSA perturbation transcriptome studies. Records come from the DBA design prototype and are for demonstration only."
+      },
+      "groups": [
+        {"id": "data", "title": "网站数据", "note": "新建“已有数据”项目，在静态网站页导入此文件，即可生成同样的网站。"}
+      ],
+      "files": [
+        {"path": "static/literature-library.tsv", "en": "en/static/literature-library.tsv", "group": "data", "title": "数据文件"}
+      ]
+    },
+    {
+      "id": "collect-gpsa",
+      "mode": "collect",
+      "title": "GPSA 数据收集流程",
+      "summary": "从研究主题和检索式开始，经过候选复核、样本分组，到处理产物和数据契约，演示收集模式的完整路径。",
+      "candidates": "collect/candidates.json",
+      "project": {
+        "name": "示例 · GPSA 虚拟扰动数据库",
+        "description": "整合人类基因扰动转录组，构建可检索的表达响应数据库。",
+        "organism": "人类 · Homo sapiens",
+        "assay": "基因扰动 RNA-seq",
+        "criteria": "明确的基因扰动实验；具备匹配对照与生物学重复；可获取原始测序数据或表达矩阵。",
+        "query": "(\"gene perturbation\" OR knockout OR knockdown OR CRISPRi OR RNAi)\nAND (\"RNA-seq\" OR transcriptome OR \"gene expression\")\nAND (human OR \"Homo sapiens\")",
+        "source": "Europe PMC"
+      },
+      "projectEn": {
+        "name": "Example · GPSA virtual perturbation database",
+        "description": "Integrate human gene-perturbation transcriptomes into a searchable expression-response database.",
+        "organism": "Human · Homo sapiens",
+        "assay": "Gene-perturbation RNA-seq",
+        "criteria": "A clear gene perturbation experiment; matched controls and biological replicates; raw sequencing data or an expression matrix is available.",
+        "query": "(\"gene perturbation\" OR knockout OR knockdown OR CRISPRi OR RNAi)\nAND (\"RNA-seq\" OR transcriptome OR \"gene expression\")\nAND (human OR \"Homo sapiens\")",
+        "source": "Europe PMC"
+      },
+      "groups": [
+        {"id": "review", "title": "候选与复核", "note": "检索结果或导入的记录先进入待复核。你或 Agent 逐条判断是否纳入并写明理由，必要时补充样本分组。"},
+        {"id": "outputs", "title": "处理产物", "note": "锁定流程后，任务在你的 SSH 服务器上运行，成功后产物连同校验值同步回本地。以下文件展示产物格式。"},
+        {"id": "archive", "title": "归档与建库", "note": "导出产物清单，并按数据契约整理每个数据集，为后续建库做准备。"}
+      ],
+      "files": [
+        {"path": "collect/candidates.json", "en": "en/collect/candidates.json", "group": "review", "title": "候选数据", "note": "也可在“主题与检索”页用“导入候选 JSON”导入，重复导入不会新增。"},
+        {"path": "collect/DEMO-0198-sample-groups.txt", "group": "review", "title": "DEMO-0198 样本分组", "note": "每行“样本编号, 分组”，复核时贴进样本分组框。"},
+        {"path": "collect/artifacts/expression_matrix.tsv", "group": "outputs", "title": "表达矩阵"},
+        {"path": "collect/artifacts/differential_expression.tsv", "group": "outputs", "title": "差异表达结果"},
+        {"path": "collect/artifacts/qc_report.html", "group": "outputs", "title": "QC 报告"},
+        {"path": "collect/artifacts/run_manifest.json", "group": "outputs", "title": "运行清单"},
+        {"path": "collect/dba_demo_manifest.json", "en": "en/collect/dba_demo_manifest.json", "group": "archive", "title": "产物清单", "note": "“导出产物清单”生成的文件。"},
+        {"path": "collect/data-contract.json", "en": "en/collect/data-contract.json", "group": "archive", "title": "数据契约", "note": "后续建库所需的字段：来源、扰动、分组、流程版本、产物、复核结论与运行记录。"}
+      ]
+    }
+  ]
+}

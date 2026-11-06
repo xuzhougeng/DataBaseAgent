@@ -1,0 +1,35 @@
+{
+  "date": "2026-11-05 America/Los_Angeles",
+  "dataset": "5k_pbmc_v3",
+  "model": "codex/gpt-6-astra",
+  "rows": 5025,
+  "columns": [
+    "barcode",
+    "tsne_1",
+    "tsne_2",
+    "cluster"
+  ],
+  "clusters": 8,
+  "passed": [
+    "Actual DBA Agent read_skill → inspect_site_data → get_static_site → build_custom_site → get_static_site",
+    "Initial rendering: 5025 cells, 8 clusters, 0 invalid coordinates",
+    "Cluster 1 filter: 1468 matching cells",
+    "Cluster 1 + Cluster 3 barcode: zero matching cells",
+    "Case-insensitive barcode search: one matching cell",
+    "Table selection shows exact original barcode, coordinates and cluster",
+    "Direct plot click selected CCTTCAGTCCCGTGAG-1 with original values",
+    "Zoom button: 1.0x → 1.3x; reset returns 1.0x",
+    "Reset-all restores 5025 cells",
+    "Pagination: page 2 of 201, 25 rows per page",
+    "No browser error/warning logs in tested interactions",
+    "Downloaded HTML contains all 5025 imported records, compared row by row",
+    "Restarted DBA: imported data and generated snapshot persisted, plot rendered again"
+  ],
+  "not_verified": [
+    "Opening file:// HTML directly: prohibited by browser tool URL policy",
+    "Public hosting/deployment: not requested and not performed",
+    "Every possible interaction or regenerated future page"
+  ],
+  "export_bytes": 403055,
+  "export_sha256": "dcf9bcfe659628eb61ec004ae55281fcdd29c3c35a9c433054252db6d1b1e6f4"
+}

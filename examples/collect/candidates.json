@@ -1,0 +1,23 @@
+[
+  {
+    "title": "Transcriptomic profiling of TP53 loss in human epithelial cells",
+    "source": "设计稿示例",
+    "accession": "DEMO-0142",
+    "organism": "Homo sapiens",
+    "abstract": "演示摘要：对 TP53 敲除细胞及非靶向对照进行三次生物学重复的 RNA-seq 测序。"
+  },
+  {
+    "title": "Context-dependent transcriptional responses to MYC silencing",
+    "source": "设计稿示例",
+    "accession": "DEMO-0198",
+    "organism": "Homo sapiens",
+    "abstract": "演示摘要：对多个细胞系开展 MYC 沉默实验，数据附件未明确全部 control 与 treatment 的配对关系。"
+  },
+  {
+    "title": "Perturbation of chromatin regulators reshapes cell identity",
+    "source": "设计稿示例",
+    "accession": "DEMO-0236",
+    "organism": "Homo sapiens",
+    "abstract": "演示摘要：通过 pooled CRISPR screen 定量测量细胞增殖与存活，不包含 RNA-seq 数据。"
+  }
+]

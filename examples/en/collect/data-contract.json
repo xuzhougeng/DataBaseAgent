@@ -1,0 +1,16 @@
+{
+  "demo": true,
+  "note": "DBA design demo; contains no real analysis data. Design-prototype data contract for review card DEMO-0142. Empty strings and the empty list are values that card does not supply. DEMO-0142 is a prototype label. This file has no repository accession and no checksum.",
+  "data_contract": {
+    "dataset_id": "DEMO-0142",
+    "source_accession": "",
+    "organism": "Homo sapiens",
+    "perturbed_gene": "TP53",
+    "perturbation": "CRISPR knockout",
+    "sample_groups": "",
+    "pipeline_version": "",
+    "output_files": [],
+    "review_decision": "Suggest include",
+    "run_provenance": "Design review record. Confidence: high. Cell: A549. Samples: 6 samples. Reason: clear single-gene perturbation with matched controls; raw RNA-seq data are provided."
+  }
+}
