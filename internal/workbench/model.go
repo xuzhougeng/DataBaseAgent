@@ -5,6 +5,7 @@ import "time"
 const SchemaVersion = 3
 
 type State struct {
+	Skills          []Skill         `json:"skills"`
 	Schema          int             `json:"schema"`
 	Projects        []Project       `json:"projects"`
 	Servers         []Server        `json:"servers"`
@@ -19,6 +20,8 @@ type State struct {
 }
 
 type Project struct {
+	Mode        string         `json:"mode"`
+	Site        *StaticSite    `json:"site,omitempty"`
 	ID          string         `json:"id"`
 	Name        string         `json:"name"`
 	Description string         `json:"description"`

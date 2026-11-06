@@ -129,7 +129,7 @@ var tools = map[string]toolSpec{
 				jobs++
 			}
 		}
-		return map[string]any{"id": p.ID, "name": p.Name, "description": p.Description, "organism": p.Organism, "assay": p.Assay, "criteria": p.Criteria, "query": p.Query, "source": p.Source, "candidates": map[string]int{"total": len(p.Candidates), "pending": n["pending"], "accepted": n["accepted"], "excluded": n["excluded"]}, "searches": len(p.Searches), "pipelineLocked": p.Draft.Locked, "pipelineVersion": p.Draft.Version, "lockedVersions": len(p.Versions), "jobs": jobs}
+		return map[string]any{"id": p.ID, "name": p.Name, "mode": projectMode(p), "description": p.Description, "organism": p.Organism, "assay": p.Assay, "criteria": p.Criteria, "query": p.Query, "source": p.Source, "candidates": map[string]int{"total": len(p.Candidates), "pending": n["pending"], "accepted": n["accepted"], "excluded": n["excluded"]}, "searches": len(p.Searches), "pipelineLocked": p.Draft.Locked, "pipelineVersion": p.Draft.Version, "lockedVersions": len(p.Versions), "jobs": jobs}
 	}},
 	"list_candidates": {Desc: "分页列出候选（不含摘要），可按 decision 筛选。返回 total、offset 和当前页。", Params: obj(map[string]any{"decision": enumParam("pending", "accepted", "excluded", "all"), "limit": intParam(1, 50), "offset": intParam(0, 1000000)}), Run: func(_ *State, p *Project, a map[string]any) any {
 		d, out := argStr(a, "decision"), []map[string]any{}
@@ -300,7 +300,11 @@ func (s *Service) runTool(ctx context.Context, pid string, a Agent, c ToolCall) 
 	if m, ok := result.(map[string]string); ok {
 		failed = m["error"] != ""
 	}
-	if len(b) > 16000 {
+	limit := 16000
+	if c.Name == "read_skill" {
+		limit = 80000
+	} // Keep the complete bounded SKILL.md, even after JSON escaping.
+	if len(b) > limit {
 		b, _ = json.Marshal(map[string]any{"truncated": true, "partial": clip(string(b), 16000), "hint": "缩小 limit 或按 id 读取详情"})
 	}
 	return string(b), failed
@@ -399,9 +403,14 @@ func (s *Service) executeAgentCalls(ctx context.Context, a Agent, calls []ToolCa
 }
 
 func systemPrompt(a Agent, p *Project) string {
-	scope := "当前为工作空间对话。需要时先创建项目或 list_projects，项目工具必须提供 projectId。"
+	scope := "项目分两种模式：已有数据选 static，直接构建静态网站；需要收集数据选 collect，目前只做收集、复核、处理分析和产物归档，不开发数据库或动态网站。模式不明时先询问。当前为工作空间对话。需要时先创建项目或 list_projects，项目工具必须提供 projectId。"
 	if p != nil {
 		scope = fmt.Sprintf("当前项目：%s（id %s）。项目工具默认操作该项目；只有用户指定其他项目时才提供其他 projectId。", p.Name, p.ID)
+		if projectMode(p) == ModeStatic {
+			scope += " 当前为已有数据 static 模式：跳过检索、复核、远程处理与数据库配置。读取用户现有数据，使用 build_static_site 生成网站，数据不全时询问；不要编造数据。"
+		} else {
+			scope += " 当前为 collect 模式：只推进数据收集、复核、处理分析与产物归档，到此停止。未来可接数据库和动态网站，本版本不得声称已经实现或部署。"
+		}
 	}
 	orchestration := ""
 	if a.ID == "assistant" {

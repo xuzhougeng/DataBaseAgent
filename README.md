@@ -186,3 +186,9 @@ scripts/                build.sh · build.ps1 · installer.nsi
 docs/                   Topic documentation
 design/                 Original design package with checksums
 ```
+
+## Project modes and SKILL templates
+
+Choose **Existing data** to import CSV/TSV/JSON and build a standalone, searchable static website from a SKILL template. Choose **Collect data** for discovery, review, processing and archival; this path currently stops at collection and analysis, before database integration or dynamic website development. Existing projects default to collection mode.
+
+The built-in research catalogue uses a table, and the literature library uses cards. Import custom `SKILL.md` files to define required fields, layout, color and agent instructions. Agents can read enabled skills on demand or when invoked as `$skill-name`. Generated websites retain template snapshots. See [template format and workflow](docs/skills.md).

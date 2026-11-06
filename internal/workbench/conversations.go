@@ -455,7 +455,7 @@ func (s *Service) executeMessage(ctx context.Context, pid string, next Message) 
 		args, _ := json.Marshal(map[string]string{"agentId": target, "task": next.Content})
 		initial = append(initial, ToolCall{ID: id("delegate"), Name: "delegate_agent", Args: args})
 	}
-	system := systemPrompt(*a, p)
+	system := systemPrompt(*a, p) + skillPrompt(&state)
 	if next.RetryOf != "" {
 		system += "\nThis is an explicit retry. Earlier tools may have already changed state; read current state before repeating any mutation."
 	}

@@ -483,3 +483,15 @@ td.empty{padding:32px}
 .mcp-modal summary{cursor:pointer;margin-bottom:12px}
 .mcp-modal [hidden]{display:none}
 #mcp-test-result{overflow-wrap:anywhere}
+
+/* Project modes and SKILL-driven static sites */
+.mode-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-bottom:28px}
+.mode-card{text-align:left;border:1px solid var(--line);border-radius:12px;padding:26px;background:#fff;display:flex;flex-direction:column;gap:12px}
+.mode-card:hover{border-color:var(--green);box-shadow:0 6px 20px #20332f09}
+.mode-card:first-child{background:linear-gradient(135deg,#edf7f1,#fff)}
+.mode-card h2{font-size:20px}.mode-card p{color:#697b72;line-height:1.8;flex:1}.mode-card small{color:var(--green);font-weight:600}.mode-card strong{display:flex;align-items:center;gap:8px;margin-top:8px;color:var(--green)}
+.mode-icon svg{width:26px;height:26px;color:var(--green)}
+.mode-note{display:flex;align-items:flex-start;gap:10px;padding:16px 18px;border:1px solid #dce8e1;border-radius:8px;background:var(--soft);margin-bottom:20px;color:#456354}.mode-note svg{margin-top:3px}
+.site-data{min-height:220px}.site-preview{width:100%;height:560px;border:0;display:block;border-radius:0 0 8px 8px;background:#fff}
+.skill-card{padding:22px;display:flex;flex-direction:column;gap:12px;margin-bottom:0}.skill-card .actions{margin-top:auto;padding-top:12px}.skill-card h2{font-size:17px;overflow-wrap:anywhere}.skill-card .mono{overflow-wrap:anywhere}.skill-card .project-top{gap:12px}
+@media(max-width:850px){.mode-grid{grid-template-columns:1fr}.mode-card{padding:20px}}

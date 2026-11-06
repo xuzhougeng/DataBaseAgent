@@ -137,3 +137,33 @@ test('MCP editor keeps tokens blank and exposes both transports and tool filters
   assert.ok(html.includes('Test connection'));
   assert.ok(html.includes('browser OAuth sign-in is not included'));
 });
+
+test('project mode routes to the correct page and omits collection controls for static data',()=>{
+ const f=fixture();
+ f.eval(`db.projects=[{id:'static',mode:'static',name:'Existing',messages:[],candidates:[]},{id:'collect',mode:'collect',name:'Collect',messages:[],candidates:[]}];`);
+ f.eval(`selectProject('static')`);
+ assert.equal(f.eval('ui.page'),'site');
+ const sidebar=f.eval('sidebar(current())');
+ assert.ok(sidebar.includes('Static website'));
+ assert.ok(!sidebar.includes("go('search')"));
+ assert.ok(!sidebar.includes("go('workflow')"));
+ assert.match(f.eval('currentAgentPrompts()[0]'),/SKILL/);
+ f.eval(`selectProject('collect')`);
+ assert.equal(f.eval('ui.page'),'overview');
+ assert.ok(f.eval('sidebar(current())').includes("go('search')"));
+ assert.ok(f.eval('collectionBoundary()').includes('come later'));
+ f.eval(`selectProject('')`);
+ assert.equal(f.eval('ui.page'),'agent');
+});
+
+test('site page only offers enabled templates and escapes saved content with sandboxed preview',()=>{
+ const f=fixture();
+ f.eval(`db.skills=[{id:'one',name:'table',enabled:true,template:{label:'<img src=x>',layout:'table',requiredColumns:['id']}},{id:'two',name:'disabled',enabled:false,template:{label:'Disabled',layout:'cards'}}];db.projects=[{id:'p',mode:'static',name:'Test',description:'',site:{title:'</textarea><script>x</script>',description:'Safe',skillName:'table',columns:['id'],rows:[['<img src=x>']],builtAt:'2026-01-01'}}];ui.projectId='p';`);
+ const html=f.eval('sitePage()');
+ assert.ok(!html.includes('<script>'));
+ assert.ok(html.includes('&lt;img'));
+ assert.ok(!html.includes('value="two"'));
+ assert.ok(html.includes('sandbox="allow-scripts"'));
+ assert.ok(!html.includes('allow-same-origin'));
+ assert.ok(html.includes('Download HTML'));
+});

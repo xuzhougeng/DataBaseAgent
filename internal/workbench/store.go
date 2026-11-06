@@ -76,6 +76,16 @@ func Open(root string) (*Store, error) {
 		s.state.Settings.MCPServers = defaultMCPServers()
 		changed = true
 	}
+	if s.state.Skills == nil {
+		s.state.Skills = defaultSkills()
+		changed = true
+	}
+	for i := range s.state.Projects {
+		if s.state.Projects[i].Mode == "" {
+			s.state.Projects[i].Mode = ModeCollect
+			changed = true
+		}
+	}
 	s.state.Settings.Agents = withPresets(s.state.Settings.Agents)
 	if s.state.Conversations == nil {
 		s.state.Conversations = []Conversation{}

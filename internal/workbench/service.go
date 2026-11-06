@@ -50,6 +50,12 @@ func (s *Service) Stop() {
 }
 
 type Request struct {
+	Mode           string       `json:"mode"`
+	SkillID        string       `json:"skillId"`
+	SkillContent   string       `json:"skillContent"`
+	Enabled        *bool        `json:"enabled,omitempty"`
+	Data           string       `json:"data"`
+	Format         string       `json:"format"`
 	ConversationID string       `json:"conversationId"`
 	MessageID      string       `json:"messageId"`
 	ClientID       string       `json:"clientId"`
@@ -99,6 +105,19 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 	if err != nil {
 		return nil, err
 	}
+	if r.ProjectID != "" {
+		switch action {
+		case "search", "importCandidates", "review", "reviewAgent", "savePipeline", "lockPipeline", "launch":
+			st := s.Store.Snapshot()
+			p, e := projectByID(&st, r.ProjectID)
+			if e != nil {
+				return nil, e
+			}
+			if projectMode(p) == ModeStatic {
+				return nil, errors.New("已有数据模式直接建立静态网站，无需检索、复核或远程处理")
+			}
+		}
+	}
 	switch action {
 	case "saveMCPServer", "deleteMCPServer":
 		return s.manageMCPServer(action, r)
@@ -127,11 +146,39 @@ func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessa
 	var result any
 	err = s.Store.Update(func(st *State) error {
 		switch action {
+		case "importSkill", "toggleSkill", "deleteSkill":
+			var e error
+			result, e = updateSkill(st, action, r)
+			return e
+		case "buildStaticSite":
+			p, e := projectByID(st, r.ProjectID)
+			if e != nil {
+				return e
+			}
+			if projectMode(p) != ModeStatic {
+				return errors.New("收集模式目前止于数据收集与分析，不支持建站")
+			}
+			site, e := newStaticSite(r.Name, r.Description, r.Format, r.Data)
+			if e != nil {
+				return e
+			}
+			if e := applySiteTemplate(st, r.SkillID, site); e != nil {
+				return e
+			}
+			p.Site, p.UpdatedAt = site, now()
+			result = map[string]any{"projectId": p.ID, "rows": len(site.Rows), "builtAt": site.BuiltAt}
+			event(st, p.ID, "", "user", "静态网站已生成", site.Title)
 		case "createProject":
+			if r.Mode == "" {
+				r.Mode = ModeCollect
+			}
+			if r.Mode != ModeStatic && r.Mode != ModeCollect {
+				return errors.New("无效的项目模式")
+			}
 			if strings.TrimSpace(r.Name) == "" {
 				return errors.New("请输入项目名称")
 			}
-			p := Project{ID: id("project"), Name: strings.TrimSpace(r.Name), Description: r.Description, Source: "Europe PMC", Candidates: []Candidate{}, Searches: []SearchRecord{}, Versions: []Pipeline{}, Messages: []Message{}, Draft: defaultPipeline(), CreatedAt: now(), UpdatedAt: now()}
+			p := Project{ID: id("project"), Mode: r.Mode, Name: strings.TrimSpace(r.Name), Description: r.Description, Source: "Europe PMC", Candidates: []Candidate{}, Searches: []SearchRecord{}, Versions: []Pipeline{}, Messages: []Message{}, Draft: defaultPipeline(), CreatedAt: now(), UpdatedAt: now()}
 			st.Projects = append(st.Projects, p)
 			result = map[string]string{"projectId": p.ID, "name": p.Name}
 			event(st, p.ID, "", "user", "项目已创建", p.Name)
