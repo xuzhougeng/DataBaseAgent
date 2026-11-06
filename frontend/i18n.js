@@ -178,6 +178,8 @@ const EN={
 "流程：{n} · v{v}\n服务器：{s}\n资源：每任务 {c} CPU，并发 {k}\n已纳入：{a} 条":"Pipeline: {n} · v{v}\nServer: {s}\nResources: {c} CPUs per job, concurrency {k}\nIncluded: {a} records",
 "只提交已纳入、且尚未运行此流程版本的数据。锁定的命令将在所选服务器上真实运行，巡检按配额自动调度。":"Only included data that has not run this pipeline version will be submitted. Locked commands run on the selected server, scheduled within quotas.",
 'OpenAI Chat Completions 兼容':'OpenAI Chat Completions compatible',
+'OpenAI Responses 兼容':'OpenAI Responses compatible',
+'例如 https://api.openai.com/v1，应用追加 /responses；支持 Responses API 的兼容网关同理':'e.g. https://api.openai.com/v1, the app appends /responses; same for compatible gateways that expose the Responses API',
 '例如 https://api.openai.com/v1；DeepSeek、Qwen、Ollama、vLLM、OpenRouter 等兼容服务同理，应用追加 /chat/completions':'e.g. https://api.openai.com/v1; same for compatible services like DeepSeek, Qwen, Ollama, vLLM, OpenRouter. The app appends /chat/completions',
 '例如 https://api.anthropic.com/v1，应用追加 /messages；模型 ID 如 claude-opus-5-5':'e.g. https://api.anthropic.com/v1, the app appends /messages; model ID e.g. claude-opus-5-5',
 '例如 https://generativelanguage.googleapis.com/v1beta，应用追加 /models/{模型}:generateContent':'e.g. https://generativelanguage.googleapis.com/v1beta, the app appends /models/{model}:generateContent',

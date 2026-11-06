@@ -37,7 +37,7 @@ type Reply struct {
 	Stop  string // end_turn | tool_use | max_tokens
 }
 
-var protocols = map[string]bool{"openai": true, "anthropic": true, "gemini": true}
+var protocols = map[string]bool{"openai": true, "openai-responses": true, "anthropic": true, "gemini": true}
 
 func modelReady(m ModelProfile) bool {
 	return m.BaseURL != "" && m.Model != "" && (m.APIKeyRef != "" || m.APIKeyEnv == "" || os.Getenv(m.APIKeyEnv) != "")
@@ -50,6 +50,8 @@ func complete(ctx context.Context, m ModelProfile, key, system string, turns []T
 	}
 	base := strings.TrimRight(m.BaseURL, "/")
 	switch m.Protocol {
+	case "openai-responses":
+		return responsesCall(ctx, base, key, m.Model, system, turns, tools, final)
 	case "anthropic":
 		return anthropicCall(ctx, base, key, m.Model, system, turns, tools, final)
 	case "gemini":
@@ -59,11 +61,30 @@ func complete(ctx context.Context, m ModelProfile, key, system string, turns []T
 	}
 }
 
+// ponytail: fixed retry policy (3 retries, 1s·2s·4s) for transport errors, 408, 429 and 5xx; make it per-profile if a provider needs more.
+var llmRetries, llmBackoff = 3, time.Second
+
 func postJSON(ctx context.Context, url, key string, headers map[string]string, body any, out any) error {
 	b, _ := json.Marshal(body)
+	for attempt := 0; ; attempt++ {
+		retry, err := postJSONOnce(ctx, url, key, headers, b, out)
+		if err == nil || !retry || attempt >= llmRetries || ctx.Err() != nil {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(llmBackoff << attempt):
+		}
+	}
+}
+
+// postJSONOnce reports whether a failure is worth retrying: transport errors and
+// overload-class statuses are; everything else (4xx, bad JSON, cancellation) is final.
+func postJSONOnce(ctx context.Context, url, key string, headers map[string]string, b []byte, out any) (bool, error) {
 	req, e := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
 	if e != nil {
-		return e
+		return false, e
 	}
 	req.Header.Set("Content-Type", "application/json")
 	for k, v := range headers {
@@ -75,21 +96,21 @@ func postJSON(ctx context.Context, url, key string, headers map[string]string, b
 	client.Timeout = 5 * time.Minute
 	res, e := client.Do(req)
 	if e != nil {
-		return e
+		return ctx.Err() == nil, e
 	}
 	defer res.Body.Close()
 	data, e := io.ReadAll(io.LimitReader(res.Body, 4<<20))
 	if e != nil {
-		return e
+		return ctx.Err() == nil, e
 	}
 	if res.StatusCode != 200 {
 		detail := string(data)
 		if key != "" {
 			detail = strings.ReplaceAll(detail, key, "[redacted]")
 		}
-		return fmt.Errorf("模型服务返回 HTTP %d：%s", res.StatusCode, clip(detail, 300))
+		return res.StatusCode == 408 || res.StatusCode == 429 || res.StatusCode >= 500, fmt.Errorf("模型服务返回 HTTP %d：%s", res.StatusCode, clip(detail, 300))
 	}
-	return json.Unmarshal(data, out)
+	return false, json.Unmarshal(data, out)
 }
 
 func clip(s string, n int) string {
@@ -185,6 +206,81 @@ func openaiCall(ctx context.Context, base, key, model, system string, turns []Tu
 	if len(r.Calls) > 0 {
 		r.Stop = "tool_use"
 	} else if ch.FinishReason == "length" {
+		r.Stop = "max_tokens"
+	}
+	return r, nil
+}
+
+// --- OpenAI Responses (also gateways that expose /responses) ---
+
+func responsesCall(ctx context.Context, base, key, model, system string, turns []Turn, tools []ToolDef, final bool) (Reply, error) {
+	input := []map[string]any{}
+	for _, t := range turns {
+		switch t.Role {
+		case "assistant":
+			if t.Text != "" || len(t.Calls) == 0 {
+				input = append(input, map[string]any{"role": "assistant", "content": t.Text})
+			}
+			for _, c := range t.Calls {
+				input = append(input, map[string]any{"type": "function_call", "call_id": c.ID, "name": c.Name, "arguments": string(validArgs(c.Args))})
+			}
+		case "tool":
+			input = append(input, map[string]any{"type": "function_call_output", "call_id": t.CallID, "output": t.Text})
+		default:
+			input = append(input, map[string]any{"role": "user", "content": t.Text})
+		}
+	}
+	body := map[string]any{"model": model, "instructions": system, "input": input}
+	if len(tools) > 0 {
+		defs := []map[string]any{}
+		for _, d := range tools {
+			// strict mode rejects schemas with optional fields, which most tools here have.
+			defs = append(defs, map[string]any{"type": "function", "name": d.Name, "description": d.Description, "parameters": schemaOr(d.Params), "strict": false})
+		}
+		body["tools"] = defs
+		if final {
+			body["tool_choice"] = "none"
+		}
+	}
+	headers := map[string]string{}
+	if key != "" {
+		headers["Authorization"] = "Bearer " + key
+	}
+	var res struct {
+		IncompleteDetails struct {
+			Reason string `json:"reason"`
+		} `json:"incomplete_details"`
+		Output []struct {
+			Type      string `json:"type"`
+			CallID    string `json:"call_id"`
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+			Content   []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"output"`
+	}
+	if e := postJSON(ctx, base+"/responses", key, headers, body, &res); e != nil {
+		return Reply{}, e
+	}
+	r, text := Reply{Stop: "end_turn"}, []string{}
+	for _, item := range res.Output {
+		switch item.Type {
+		case "message":
+			for _, c := range item.Content {
+				if c.Type == "output_text" {
+					text = append(text, c.Text)
+				}
+			}
+		case "function_call":
+			r.Calls = append(r.Calls, ToolCall{ID: item.CallID, Name: item.Name, Args: validArgs(json.RawMessage(item.Arguments))})
+		}
+	}
+	r.Text = strings.Join(text, "\n")
+	if len(r.Calls) > 0 {
+		r.Stop = "tool_use"
+	} else if res.IncompleteDetails.Reason == "max_output_tokens" {
 		r.Stop = "max_tokens"
 	}
 	return r, nil

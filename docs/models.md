@@ -1,6 +1,6 @@
 # Model Providers
 
-DBA talks to language models through three wire protocols behind one neutral interface. You register any number of *model profiles* in **Preferences → Models** and assign one per agent. No SDKs are bundled; every adapter is a small, auditable HTTP client in `internal/workbench/llm.go`.
+DBA talks to language models through four wire protocols behind one neutral interface. You register any number of *model profiles* in **Preferences → Models** and assign one per agent. No SDKs are bundled; every adapter is a small, auditable HTTP client in `internal/workbench/llm.go`.
 
 ## Profiles
 
@@ -9,7 +9,7 @@ Preferences shows model names in a compact list. **Add model** opens a dialog; c
 | Field | Meaning |
 | --- | --- |
 | Name | Label shown in agent selectors. |
-| Protocol | `openai`, `anthropic` or `gemini` (see below). |
+| Protocol | `openai`, `openai-responses`, `anthropic` or `gemini` (see below). |
 | API base URL | Service prefix. DBA appends the protocol-specific path. `http` or `https`, no embedded credentials. |
 | Model ID | Passed through verbatim (`model` field or URL segment). |
 | API key | Enter the key from your provider. Leave it blank for a service that runs without authentication. |
@@ -23,6 +23,7 @@ When editing a model, leave the API key blank to keep its current settings. Chan
 | Protocol | Request | Auth header | Tool calling | Notes |
 | --- | --- | --- | --- | --- |
 | `openai` | `POST {base}/chat/completions` | `Authorization: Bearer` | `tools` / `tool_calls` / `role: tool` | Works with OpenAI, DeepSeek, Qwen (DashScope compatible mode), Ollama (`/v1`), vLLM, LM Studio, OpenRouter and most gateways. Invalid JSON in `arguments` is replaced by `{}`. |
+| `openai-responses` | `POST {base}/responses` | `Authorization: Bearer` | `tools` (flat `name`/`parameters`, `strict: false`) / `function_call` / `function_call_output` | OpenAI Responses API and gateways that expose it. `instructions` carries the system prompt; `call_id` is the tool call id. `incomplete_details.reason = max_output_tokens` maps to `max_tokens`. |
 | `anthropic` | `POST {base}/messages` | `x-api-key` + `anthropic-version: 2023-06-01` | `tools` / `tool_use` / `tool_result` blocks | `max_tokens` is fixed at 8192. Tool results from one turn are merged into a single `user` message, as the API requires. Tool definitions stay in the request even for the forced final answer (`tool_choice: none`). |
 | `gemini` | `POST {base}/models/{model}:generateContent` | `x-goog-api-key` | `functionDeclarations` / `functionCall` / `functionResponse` | Gemini issues no call ids; DBA assigns local ids for tracing and matches responses by name. The forced final answer uses `functionCallingConfig.mode = NONE`. |
 
@@ -30,7 +31,8 @@ Common behaviour:
 
 - No sampling parameters are sent; provider defaults apply. (Several current models reject `temperature`.)
 - Responses are read up to 4 MiB; non-200 responses surface the status code and the first 300 bytes of the body in the UI.
-- The HTTP client has a 90 s timeout per call and honours `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` from the environment.
+- The HTTP client has a 5 min timeout per call and honours `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` from the environment.
+- Transport errors and HTTP 408 / 429 / 5xx are retried up to three times with 1 s, 2 s and 4 s back-off before the request fails; other errors fail immediately. A failed request still pauses the chat queue for review.
 - Stop reasons are normalized to `end_turn`, `tool_use` or `max_tokens`; an empty response is an error, not a silent blank reply.
 
 ## Neutral conversation model

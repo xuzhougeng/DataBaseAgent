@@ -9,7 +9,7 @@
   <img alt="Go 1.26" src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white">
   <img alt="Wails v3" src="https://img.shields.io/badge/Wails-v3.1-DF0000">
   <img alt="Platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-4c8a6a">
-  <img alt="LLM protocols" src="https://img.shields.io/badge/LLM%20protocols-OpenAI%20%7C%20Anthropic%20%7C%20Gemini-6f42c1">
+  <img alt="LLM protocols" src="https://img.shields.io/badge/LLM%20protocols-OpenAI%20%7C%20Responses%20%7C%20Anthropic%20%7C%20Gemini-6f42c1">
   <img alt="No npm dependencies" src="https://img.shields.io/badge/frontend-0%20npm%20dependencies-informational">
 </p>
 
@@ -113,6 +113,7 @@ Each agent runs a bounded loop: *model → tool calls → results → model*, up
 | Protocol | Works with | Endpoint DBA calls |
 | --- | --- | --- |
 | `openai` — Chat Completions | OpenAI, DeepSeek, Qwen, Ollama, vLLM, OpenRouter, LM Studio, any compatible gateway | `{base}/chat/completions` |
+| `openai-responses` — Responses | OpenAI Responses API and gateways that expose it | `{base}/responses` |
 | `anthropic` — Messages | Anthropic API and compatible proxies | `{base}/messages` |
 | `gemini` — generateContent | Google AI Studio / Gemini API | `{base}/models/{model}:generateContent` |
 

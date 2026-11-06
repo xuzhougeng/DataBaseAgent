@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -155,7 +156,7 @@ func (s *Service) operate(j Job) {
 			s.operationError(j, e)
 			return
 		}
-		_ = s.Store.Update(func(st *State) error {
+		s.persist(j, func(st *State) error {
 			cur, e := jobByID(st, j.ID)
 			if e != nil {
 				return e
@@ -174,7 +175,7 @@ func (s *Service) operate(j Job) {
 			s.operationError(j, e)
 			return
 		}
-		_ = s.Store.Update(func(st *State) error {
+		s.persist(j, func(st *State) error {
 			cur, e := jobByID(st, j.ID)
 			if e != nil {
 				return e
@@ -212,7 +213,7 @@ func (s *Service) operate(j Job) {
 			s.operationError(j, e)
 			return
 		}
-		_ = s.Store.Update(func(st *State) error {
+		s.persist(j, func(st *State) error {
 			cur, e := jobByID(st, j.ID)
 			if e != nil {
 				return e
@@ -237,6 +238,14 @@ func (s *Service) operate(j Job) {
 	}
 }
 
+// persist records a job transition. A failed write leaves the in-memory job unchanged and
+// the next tick re-observes it (remote start is idempotent), so the failure is logged, not lost.
+func (s *Service) persist(j Job, fn func(*State) error) {
+	if err := s.Store.Update(fn); err != nil {
+		log.Printf("任务 %s（%s）状态未能保存，下次巡检重新观察: %v", j.ID, j.Status, err)
+	}
+}
+
 var transientFailure = regexp.MustCompile(`(?i)(curl: \((6|7|18|28|35|52|56)\)|connection (reset|timed out|refused)|temporary failure|network is unreachable)`)
 
 func retryTime(n int) string {
@@ -253,7 +262,7 @@ func (s *Service) operationError(j Job, err error) {
 	if s.ctx.Err() != nil {
 		return
 	} // Shutdown preserves the last durable state for the next launch.
-	_ = s.Store.Update(func(st *State) error {
+	s.persist(j, func(st *State) error {
 		cur, e := jobByID(st, j.ID)
 		if e != nil {
 			return e

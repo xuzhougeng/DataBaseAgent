@@ -8,8 +8,8 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 let db={projects:[],servers:[],jobs:[],artifacts:[],events:[],settings:{}};
 let meta={},lastState='',loading=false,stateTag='',lastReply=null,lastSignature='';
 const ui={page:'projects',projectId:null,filter:'pending',candidateId:'',jobFilter:'all',jobQuery:'',modelId:'',busy:new Set(),dirty:{},chatDrafts:{},conversationSelections:{},chatReadCounts:{},chatOutbox:{},chatSending:new Set(),chatScrolls:{},chatDetails:{},historyQuery:'',historyArchived:false,asideHidden:(()=>{try{return localStorage.getItem('dba-aside')==='hidden'}catch{}})()};
-const protocolNames={openai:'OpenAI Chat Completions 兼容',anthropic:'Anthropic Messages',gemini:'Google Gemini'};
-const protocolHints={openai:'例如 https://api.openai.com/v1；DeepSeek、Qwen、Ollama、vLLM、OpenRouter 等兼容服务同理，应用追加 /chat/completions',anthropic:'例如 https://api.anthropic.com/v1，应用追加 /messages；模型 ID 如 claude-opus-5-5',gemini:'例如 https://generativelanguage.googleapis.com/v1beta，应用追加 /models/{模型}:generateContent'};
+const protocolNames={openai:'OpenAI Chat Completions 兼容','openai-responses':'OpenAI Responses 兼容',anthropic:'Anthropic Messages',gemini:'Google Gemini'};
+const protocolHints={openai:'例如 https://api.openai.com/v1；DeepSeek、Qwen、Ollama、vLLM、OpenRouter 等兼容服务同理，应用追加 /chat/completions','openai-responses':'例如 https://api.openai.com/v1，应用追加 /responses；支持 Responses API 的兼容网关同理',anthropic:'例如 https://api.anthropic.com/v1，应用追加 /messages；模型 ID 如 claude-opus-5-5',gemini:'例如 https://generativelanguage.googleapis.com/v1beta，应用追加 /models/{模型}:generateContent'};
 const labels={queued:'排队中',starting:'提交中',running:'运行中',retry_wait:'等待重试',syncing:'结果同步',succeeded:'已完成',needs_help:'需要协助',pending:'待确认',accepted:'已纳入',excluded:'已排除',include:'建议纳入',exclude:'建议排除',uncertain:'需要确认',online:'连接正常',unchecked:'待检查',error:'连接异常'};
 const stageNames=['待定义主题','待检索','待复核','待定义流程','处理中','已有产物'];
 
@@ -134,18 +134,37 @@ function render(){
   const view=ui.page+'|'+ui.projectId,form=view+'|'+(ui.page==='review'?ui.candidateId:''),chatKey=ui.page==='agent'?conversationKey():'';
   const scrolls=view===ui.view?['.sidebar','.candidate-list','.aside-feed','.history-list',...(form===ui.form?['main']:[])].map(s=>[s,document.querySelector(s)?.scrollTop]):[];
   if(form!==ui.form)ui.dirty={};
-  const app=document.querySelector('#app>.app'),keepMain=ui.page==='examples'&&view===ui.view&&body===ui.mainHTML&&app;
-  Object.assign(ui,{view,form,chatKey,mainHTML:body});
+  Object.assign(ui,{view,form,chatKey});
   const fab=ui.page==='agent'?'':`<button class="assistant-fab" onclick="go('agent')" aria-label="${t('打开 AI 助手')}" title="${t('打开 AI 助手')}">${I('agent')}<span>${t('AI 助手')}</span>${helpJobs().length+(meta.approvals||[]).length?`<span class="count warn">${helpJobs().length+(meta.approvals||[]).length}</span>`:''}</button>`;
-  // ponytail: an unchanged example page keeps its DOM so polls do not reload the preview iframe.
-  if(keepMain){app.className=`app ${ui.asideHidden?'aside-hidden':''}`;app.querySelector('.sidebar').outerHTML=sidebar(p);app.querySelector('.aside').outerHTML=aside(p);app.querySelector('.assistant-fab').outerHTML=fab;}
-  else document.getElementById('app').innerHTML=`<div class="app ${ui.asideHidden?'aside-hidden':''}">${sidebar(p)}<main class="${ui.page==='agent'?'assistant-main':''}">${body}</main>${aside(p)}${fab}</div>`;
+  morph(document.getElementById('app'),`<div class="app ${ui.asideHidden?'aside-hidden':''}">${sidebar(p)}<main class="${ui.page==='agent'?'assistant-main':''}">${body}</main>${aside(p)}${fab}</div>`);
   for(const [id,v] of Object.entries(ui.dirty)){const el=document.getElementById(id);if(el&&el.type!=='file')el.value=v;}
   document.querySelectorAll('[data-detail-id]').forEach(el=>{if(el.dataset.detailId in ui.chatDetails)el.open=ui.chatDetails[el.dataset.detailId];});
   for(const [s,top] of scrolls){const el=document.querySelector(s);if(el&&top)el.scrollTop=top;}
   const chat=document.querySelector('.chat-log'),position=ui.chatScrolls[chatKey];if(chat)chat.scrollTop=!position||position.bottom?chat.scrollHeight:position.top;
   if(focusedId==='agent-message'){const el=document.getElementById(focusedId);if(el&&!el.disabled){el.focus({preventScroll:true});if(selection)el.setSelectionRange(...selection);}}
-  resizeComposer();onChatScroll();if(focusedId==='agent-message')updateMentions(document.getElementById('agent-message'),true);
+  resizeComposer();onChatScroll();if(focusedId==='agent-message'&&document.getElementById('agent-message'))updateMentions(document.getElementById('agent-message'),true);
+}
+
+// ponytail: unkeyed DOM patcher — same-index nodes are reused, so focus, scroll positions and the
+// example iframe survive polls without a rebuild; add keys if long lists start reordering often.
+function morph(el,html){const tpl=document.createElement('template');tpl.innerHTML=html;morphChildren(el,tpl.content);}
+function morphChildren(from,to){
+  const next=[...to.childNodes];
+  next.forEach((n,i)=>{
+    const o=from.childNodes[i];
+    if(!o){from.appendChild(n);return;}
+    if(o.nodeType!==n.nodeType||o.nodeName!==n.nodeName){from.replaceChild(n,o);return;}
+    if(n.nodeType===Node.TEXT_NODE){if(o.data!==n.data)o.data=n.data;return;}
+    if(n.nodeType!==Node.ELEMENT_NODE)return;
+    for(const {name,value} of n.attributes)if(o.getAttribute(name)!==value)o.setAttribute(name,value);
+    for(const {name} of [...o.attributes])if(!n.hasAttribute(name))o.removeAttribute(name);
+    // Read the rendered value before morphChildren moves n's text nodes into o (a textarea's value is its text).
+    const control=o.matches('input,textarea,select'),value=control&&n.value,checked=control&&n.checked;
+    morphChildren(o,n);
+    // Form controls reset to the rendered value as a rebuild would; render() then restores ui.dirty.
+    if(control){if(o.type==='checkbox'||o.type==='radio')o.checked=checked;else if(o.type!=='file'&&o.value!==value)o.value=value;}
+  });
+  while(from.childNodes.length>next.length)from.removeChild(from.lastChild);
 }
 
 function sidebar(p){

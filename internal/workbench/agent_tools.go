@@ -47,7 +47,7 @@ func init() {
 		"organism": strParam("研究对象"), "year": strParam("年份"),
 	}, "title")
 	model := obj(map[string]any{
-		"id": strParam("修改现有模型时提供 ID"), "name": strParam("名称"), "protocol": enumParam("openai", "anthropic", "gemini"),
+		"id": strParam("修改现有模型时提供 ID"), "name": strParam("名称"), "protocol": enumParam("openai", "openai-responses", "anthropic", "gemini"),
 		"baseUrl": strParam("API 服务前缀；修改已保存密钥的模型地址时需用户在偏好设置中重新填写密钥"), "model": strParam("模型 ID"),
 	}) // Credential sources (API key, environment variable) are configured only by the user.
 	mutations := map[string]toolSpec{
