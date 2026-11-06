@@ -499,4 +499,25 @@ func TestMCPOAuthLogin(t *testing.T) {
 	if mcpStatus(s.Store.Snapshot().Settings.MCPServers[len(s.Store.Snapshot().Settings.MCPServers)-1]) != "configured" {
 		t.Fatal("status")
 	}
+	// A server without dynamic registration (GitHub) needs a user-registered client ID.
+	var noReg string
+	static := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/.well-known/oauth-protected-resource":
+			_, _ = io.WriteString(w, `{"resource":"`+noReg+`","authorization_servers":["`+noReg+`"]}`)
+		case "/.well-known/oauth-authorization-server":
+			_, _ = io.WriteString(w, `{"issuer":"`+noReg+`","authorization_endpoint":"`+noReg+`/authorize","token_endpoint":"`+noReg+`/token","code_challenge_methods_supported":["S256"]}`)
+		default:
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			w.WriteHeader(401)
+		}
+	}))
+	defer static.Close()
+	noReg = static.URL
+	v = saveTestMCP(t, s, MCPServer{Name: "noreg", Transport: "http", URL: static.URL, Enabled: true})
+	body, _ = json.Marshal(Request{MCPServerID: v.ID})
+	if _, err := s.Dispatch(context.Background(), "loginMCPServer", body); err == nil || !strings.Contains(err.Error(), "Client ID") || browser.Load() != 1 {
+		t.Fatalf("missing client id advice: %v", err)
+	}
 }

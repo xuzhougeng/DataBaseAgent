@@ -168,7 +168,7 @@ func (s *Service) loginMCPServer(ctx context.Context, r Request) (any, error) {
 	}
 	c, err := s.connectMCPOAuth(ctx, v, secret, redirect, fetch)
 	if err != nil {
-		return nil, err
+		return nil, loginError(err)
 	}
 	defer c.close()
 	tools, err := c.tools(ctx)
@@ -245,4 +245,19 @@ func (s *Service) connectMCPOAuth(ctx context.Context, v MCPServer, secret, redi
 	client := &http.Client{Timeout: time.Duration(max(v.StartupTimeoutSec, v.ToolTimeoutSec)) * time.Second,
 		Transport: mcpTransport{base: http.DefaultTransport}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return s.startMCP(ctx, c, &mcp.StreamableClientTransport{Endpoint: v.URL, HTTPClient: client, OAuthHandler: handler, DisableStandaloneSSE: true, MaxRetries: -1, MaxEventSize: 4 << 20})
+}
+
+// loginError turns the SDK's transport-wrapped authorization errors into advice.
+func loginError(err error) error {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "no configured client registration methods"):
+		return errors.New("该服务不支持自动注册客户端：请在「高级认证」中填写自建 OAuth App 的 Client ID，或改用 Token")
+	case strings.Contains(msg, "protected resource metadata"):
+		return errors.New("该服务未提供 OAuth 登录信息，请改用 Token")
+	}
+	if i := strings.LastIndex(msg, "rejected by transport: "); i >= 0 {
+		msg = msg[i+len("rejected by transport: "):]
+	}
+	return errors.New(msg)
 }

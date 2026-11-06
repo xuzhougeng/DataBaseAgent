@@ -27,7 +27,7 @@ const active=j=>['starting','running','syncing'].includes(j.status);
 const text=key=>t(labels[key]||key);
 const badge=(s,c='')=>`<span class="badge ${c}">${esc(s)}</span>`;
 const statusBadge=s=>badge(text(s),['needs_help','uncertain','error'].includes(s)?'orange':['running','starting','syncing'].includes(s)?'blue':['excluded','unchecked','queued','pending','retry_wait'].includes(s)?'gray':'');
-const btn=(s,act,cls='',icon='',disabled=false)=>`<button class="button ${cls}" onclick="${act}" ${disabled?'disabled':''}>${icon?I(icon):''}${esc(s)}</button>`;
+const btn=(s,act,cls='',icon='',disabled=false)=>`<button type="button" class="button ${cls}" onclick="${act}" ${disabled?'disabled':''}>${icon?I(icon):''}${esc(s)}</button>`;
 const head=(t,sub='',actions='')=>`<div class="page-head"><div><h1>${esc(t)}</h1>${sub?`<p>${esc(sub)}</p>`:''}</div><div class="actions">${actions}</div></div>`;
 const field=(label,id,value='',type='input',extra='')=>`<div class="field"><label for="${id}">${esc(label)}</label>${type==='textarea'?`<textarea id="${id}" ${extra}>${esc(value)}</textarea>`:`<input id="${id}" value="${esc(value)}" ${extra}>`}</div>`;
 const val=id=>document.getElementById(id)?.value.trim()||'';

@@ -70,7 +70,7 @@ function loginMCP(){
   if(mcpTesting)return;
   const sid=mcpEditingId,sequence=++mcpTestSequence,secret=val('mcp-client-secret');
   const result=document.getElementById('mcp-test-result');if(!sid||!result)return;
-  mcpTesting=true;result.textContent=t('已在浏览器中打开授权页面，完成授权后会自动返回…');
+  mcpTesting=true;result.textContent=t('正在连接服务并打开浏览器授权页面，完成授权后会自动返回…');
   run(async()=>{
     try{
       const reply=await request('loginMCPServer',{mcpServerId:sid,apiKey:secret||undefined});

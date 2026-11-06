@@ -93,7 +93,7 @@ const EN={
 "OAuth Client Secret（可选，仅登录时使用）":"OAuth client secret (optional, used only when signing in)",
 "GitHub 等不支持自动注册的服务需要自建 OAuth App：回调地址填 http://127.0.0.1/callback（端口任意）。Secret 只随登录保存在系统凭据库。":"Servers without dynamic client registration, such as GitHub, need your own OAuth app: set the callback URL to http://127.0.0.1/callback (any port). The secret is stored in the system credential store only with the sign-in.",
 "已保存的登录或 Token 优先于环境变量；无认证服务请全部留空。":"A saved sign-in or token takes precedence over the environment variable. Leave everything empty for unauthenticated servers.",
-"已在浏览器中打开授权页面，完成授权后会自动返回…":"The authorization page opened in your browser. This will continue once you finish authorizing…",
+"正在连接服务并打开浏览器授权页面，完成授权后会自动返回…":"Connecting to the server and opening the authorization page in your browser. This will continue once you finish authorizing…",
 "登录成功，可用工具 {n} 个":"Signed in. {n} tools available",
 "该服务无需登录，可用工具 {n} 个":"This server needs no sign-in. {n} tools available",
 "删除插件配置及已保存的登录或 Token？此操作不会删除远端资源。":"Delete this plugin configuration and its saved sign-in or token? Remote resources will be kept.",
