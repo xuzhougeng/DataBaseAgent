@@ -61,18 +61,30 @@ func Handler(s *Service, assets fs.FS) http.Handler {
 				write(map[string]string{"error": "静态网站尚未生成"})
 				return
 			}
-			html, err := renderStaticSite(p.Site)
+			writeSite(w, r, p.Site)
+		case r.Method == "GET" && r.URL.Path == "/api/examples":
+			list, err := loadExamples()
 			if err != nil {
 				w.WriteHeader(500)
 				write(map[string]string{"error": err.Error()})
 				return
 			}
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Header().Set("Content-Security-Policy", "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'")
-			if r.URL.Query().Get("download") == "1" {
-				w.Header().Set("Content-Disposition", `attachment; filename="index.html"`)
+			write(map[string]any{"examples": list})
+		case r.Method == "GET" && r.URL.Path == "/api/example-site":
+			ex, err := exampleByID(r.URL.Query().Get("id"))
+			if err != nil || ex.SiteData == "" {
+				w.WriteHeader(404)
+				write(map[string]string{"error": "示例不存在"})
+				return
 			}
-			_, _ = w.Write([]byte(html))
+			state := s.Store.Snapshot()
+			site, err := exampleSite(&state, ex, true)
+			if err != nil {
+				w.WriteHeader(500)
+				write(map[string]string{"error": err.Error()})
+				return
+			}
+			writeSite(w, r, site)
 		case r.Method == "GET" && r.URL.Path == "/api/state":
 			body, tag := s.stateResponse(r.Header.Get("If-None-Match"))
 			w.Header().Set("ETag", tag)
@@ -114,6 +126,22 @@ func Handler(s *Service, assets fs.FS) http.Handler {
 			write(map[string]string{"error": "接口不存在"})
 		}
 	})
+}
+
+// writeSite serves a generated website as an inert, sandboxed document.
+func writeSite(w http.ResponseWriter, r *http.Request, site *StaticSite) {
+	html, err := renderStaticSite(site)
+	if err != nil {
+		w.WriteHeader(500)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy", "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'")
+	if r.URL.Query().Get("download") == "1" {
+		w.Header().Set("Content-Disposition", `attachment; filename="index.html"`)
+	}
+	_, _ = w.Write([]byte(html))
 }
 
 // stateResponse builds the polling payload under one read lock. The tag combines

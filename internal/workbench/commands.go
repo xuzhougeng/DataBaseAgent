@@ -86,6 +86,9 @@ func init() {
 		"savePipeline":     {collect: true, apply: savePipeline(false)},
 		"lockPipeline":     {collect: true, apply: savePipeline(true)},
 		"addServer":        {apply: addServer},
+
+		// Built-in examples (examples.go): at most one project per example.
+		"createExampleProject": {apply: createExampleProject},
 		"launch": {collect: true, apply: func(_ *Service, _ context.Context, st *State, r Request) (any, error) {
 			return nil, queueJobs(st, r.ProjectID)
 		}},
@@ -131,10 +134,14 @@ func createProject(_ *Service, _ context.Context, st *State, r Request) (any, er
 	if strings.TrimSpace(r.Name) == "" {
 		return nil, errors.New("请输入项目名称")
 	}
-	p := Project{ID: id("project"), Mode: r.Mode, Name: strings.TrimSpace(r.Name), Description: r.Description, Source: "Europe PMC", Candidates: []Candidate{}, Searches: []SearchRecord{}, Versions: []Pipeline{}, Messages: []Message{}, Draft: defaultPipeline(), CreatedAt: now(), UpdatedAt: now()}
+	p := newProject(r.Mode, r.Name, r.Description)
 	st.Projects = append(st.Projects, p)
 	event(st, p.ID, "", "user", "项目已创建", p.Name)
 	return map[string]string{"projectId": p.ID, "name": p.Name}, nil
+}
+
+func newProject(mode, name, description string) Project {
+	return Project{ID: id("project"), Mode: mode, Name: strings.TrimSpace(name), Description: description, Source: "Europe PMC", Candidates: []Candidate{}, Searches: []SearchRecord{}, Versions: []Pipeline{}, Messages: []Message{}, Draft: defaultPipeline(), CreatedAt: now(), UpdatedAt: now()}
 }
 
 func saveProject(_ *Service, _ context.Context, st *State, r Request) (any, error) {

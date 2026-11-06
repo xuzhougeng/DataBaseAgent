@@ -118,16 +118,20 @@ function render(){
   const oldLog=document.querySelector('.chat-log');
   if(oldLog&&ui.chatKey)ui.chatScrolls[ui.chatKey]={top:oldLog.scrollTop,bottom:oldLog.scrollHeight-oldLog.scrollTop-oldLog.clientHeight<48};
   document.querySelectorAll('[data-detail-id]').forEach(el=>ui.chatDetails[el.dataset.detailId]=el.open);
-  if(!p&&!['projects','servers','agent','agent-center','settings','skills'].includes(ui.page))ui.page='projects';
+  if(!p&&!['projects','servers','agent','agent-center','settings','skills','examples'].includes(ui.page))ui.page='projects';
   if(staticMode(p)&&['search','review','workflow','jobs','results'].includes(ui.page))ui.page='site';
   if(p&&!staticMode(p)&&ui.page==='site')ui.page='overview';
-  const pages={site:sitePage,skills:skillsPage,projects:allProjects,overview,search:searchPage,review:reviewPage,workflow:workflowPage,jobs:jobsPage,servers:serversPage,results:resultsPage,agent:agentPage,'agent-center':agentCenterPage,settings:settingsPage};
+  const pages={site:sitePage,skills:skillsPage,examples:examplesPage,projects:allProjects,overview,search:searchPage,review:reviewPage,workflow:workflowPage,jobs:jobsPage,servers:serversPage,results:resultsPage,agent:agentPage,'agent-center':agentCenterPage,settings:settingsPage};
   const body=(pages[ui.page]||allProjects)();
   const view=ui.page+'|'+ui.projectId,form=view+'|'+(ui.page==='review'?ui.candidateId:''),chatKey=ui.page==='agent'?conversationKey():'';
   const scrolls=view===ui.view?['.sidebar','.candidate-list','.aside-feed','.history-list',...(form===ui.form?['main']:[])].map(s=>[s,document.querySelector(s)?.scrollTop]):[];
   if(form!==ui.form)ui.dirty={};
-  Object.assign(ui,{view,form,chatKey});
-  document.getElementById('app').innerHTML=`<div class="app ${ui.asideHidden?'aside-hidden':''}">${sidebar(p)}<main class="${ui.page==='agent'?'assistant-main':''}">${body}</main>${aside(p)}${ui.page==='agent'?'':`<button class="assistant-fab" onclick="go('agent')" aria-label="${t('打开 AI 助手')}" title="${t('打开 AI 助手')}">${I('agent')}<span>${t('AI 助手')}</span>${helpJobs().length+(meta.approvals||[]).length?`<span class="count warn">${helpJobs().length+(meta.approvals||[]).length}</span>`:''}</button>`}</div>`;
+  const app=document.querySelector('#app>.app'),keepMain=ui.page==='examples'&&view===ui.view&&body===ui.mainHTML&&app;
+  Object.assign(ui,{view,form,chatKey,mainHTML:body});
+  const fab=ui.page==='agent'?'':`<button class="assistant-fab" onclick="go('agent')" aria-label="${t('打开 AI 助手')}" title="${t('打开 AI 助手')}">${I('agent')}<span>${t('AI 助手')}</span>${helpJobs().length+(meta.approvals||[]).length?`<span class="count warn">${helpJobs().length+(meta.approvals||[]).length}</span>`:''}</button>`;
+  // ponytail: an unchanged example page keeps its DOM so polls do not reload the preview iframe.
+  if(keepMain){app.className=`app ${ui.asideHidden?'aside-hidden':''}`;app.querySelector('.sidebar').outerHTML=sidebar(p);app.querySelector('.aside').outerHTML=aside(p);app.querySelector('.assistant-fab').outerHTML=fab;}
+  else document.getElementById('app').innerHTML=`<div class="app ${ui.asideHidden?'aside-hidden':''}">${sidebar(p)}<main class="${ui.page==='agent'?'assistant-main':''}">${body}</main>${aside(p)}${fab}</div>`;
   for(const [id,v] of Object.entries(ui.dirty)){const el=document.getElementById(id);if(el)el.value=v;}
   document.querySelectorAll('[data-detail-id]').forEach(el=>{if(el.dataset.detailId in ui.chatDetails)el.open=ui.chatDetails[el.dataset.detailId];});
   for(const [s,top] of scrolls){const el=document.querySelector(s);if(el&&top)el.scrollTop=top;}
@@ -154,6 +158,7 @@ function sidebar(p){
     ${item('servers','server','服务器资源',db.servers.length||'')}
     ${item('agent-center','agent','Agent 中心')}
     ${item('skills','file','SKILL 模板')}
+    ${item('examples','compass','示例')}
     <div class="sidebar-bottom">${item('settings','settings','偏好设置')}<div class="version"><span>v0.2.0 · ${t('本地工作空间')}</span><button class="text-button" onclick="setLang('${lang==='en'?'zh':'en'}')">${lang==='en'?'中文':'English'}</button></div></div></nav>`;
 }
 
@@ -170,7 +175,7 @@ function aside(p){
     </aside>`;
 }
 function allProjects(){
-  return head(t('所有项目'),t('{p} 个项目 · {s} 台服务器 · {j} 个任务运行中',{p:db.projects.length,s:db.servers.length,j:db.jobs.filter(active).length}),btn(t('AI 助手'),"go('agent')",'','agent')+btn(t('新建项目'),'newProject()','primary','plus'))+modeCards()+`${db.projects.length?`<div class="grid-projects">${db.projects.map(p=>{const s=stage(p),jobs=projectJobs(p.id),attention=pending(p).length||jobs.some(j=>j.status==='needs_help');return `<button class="project-card" onclick="selectProject('${p.id}')"><div class="project-top"><h2>${esc(p.name)}</h2>${badge(staticMode(p)?t(p.site?'网站已生成':'待建立网站'):t(stageNames[s]),attention?'orange':s?'':'gray')}</div><p>${esc(p.description||t('尚未填写研究目标'))}</p><p class="muted">${modeTitle(p)}</p><div class="project-meta">${staticMode(p)?t('{n} 条记录',{n:p.site?.rows.length||0}):t('{c} 条候选 · {r} 条待复核 · {j} 个任务运行中 · {a} 份产物',{c:p.candidates.length,r:pending(p).length,j:jobs.filter(active).length,a:projectArtifacts(p.id).length})}</div><div class="progress"><i style="width:${staticMode(p)?(p.site?100:0):s*20}%"></i></div></button>`;}).join('')}</div>`:empty(t('尚无项目'))}`;
+  return head(t('所有项目'),t('{p} 个项目 · {s} 台服务器 · {j} 个任务运行中',{p:db.projects.length,s:db.servers.length,j:db.jobs.filter(active).length}),btn(t('AI 助手'),"go('agent')",'','agent')+btn(t('新建项目'),'newProject()','primary','plus'))+modeCards()+`${db.projects.length?`<div class="grid-projects">${db.projects.map(p=>{const s=stage(p),jobs=projectJobs(p.id),attention=pending(p).length||jobs.some(j=>j.status==='needs_help');return `<button class="project-card" onclick="selectProject('${p.id}')"><div class="project-top"><h2>${esc(p.name)}</h2>${badge(staticMode(p)?t(p.site?'网站已生成':'待建立网站'):t(stageNames[s]),attention?'orange':s?'':'gray')}</div><p>${esc(p.description||t('尚未填写研究目标'))}</p><p class="muted">${modeTitle(p)}</p><div class="project-meta">${staticMode(p)?t('{n} 条记录',{n:p.site?.rows.length||0}):t('{c} 条候选 · {r} 条待复核 · {j} 个任务运行中 · {a} 份产物',{c:p.candidates.length,r:pending(p).length,j:jobs.filter(active).length,a:projectArtifacts(p.id).length})}</div><div class="progress"><i style="width:${staticMode(p)?(p.site?100:0):s*20}%"></i></div></button>`;}).join('')}</div>${examplesStrip()}`:examplesStrip()||empty(t('尚无项目'))}`;
 }
 
 function overview(){
@@ -366,7 +371,7 @@ function buildSite(){
 }
 function downloadSite(){
  const pid=ui.projectId;
- run(async()=>{const res=await fetch(siteURL(pid)+'&download=1');if(!res.ok)throw new Error(t('下载失败'));const blob=await res.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='index.html';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);});
+ run(async()=>{const res=await fetch(siteURL(pid)+'&download=1');if(!res.ok)throw new Error(t('下载失败'));saveBlob('index.html',await res.blob());});
 }
 function skillsPage(){
  return head('SKILL',t('用 SKILL 定义不同类型数据库的字段和静态展示模板，也可为 Agent 提供工作指引。'),btn(t('导入 SKILL.md'),'importSkillModal()','primary','plus'))+`<div class="mode-note">${I('file')}<span>${t('模板随 SKILL.md 导入。当前支持表格和卡片布局；技能通过已有工具执行，不自动运行附带脚本。')}</span></div><div class="grid-projects">${(db.skills||[]).map(s=>`<section class="card skill-card"><div class="project-top"><h2>${esc(s.template?t(s.template.label):s.name)}</h2>${badge(t(s.enabled?'已启用':'已停用'),s.enabled?'':'gray')}</div><p class="mono">${esc(s.name)}</p><p class="muted">${esc(s.description)}</p>${s.template?`<p>${esc(t(s.template.layout==='cards'?'卡片布局':'表格布局'))} · ${esc((s.template.requiredColumns||[]).join(', '))}</p>`:''}<div class="actions">${btn(t('查看'),'viewSkill(\''+s.id+'\')','small')}${btn(t(s.enabled?'停用':'启用'),`toggleSkill('${s.id}',${!s.enabled})`,'small')}${btn(t('删除'),`deleteSkillModal('${s.id}')`,'small','trash')}</div></section>`).join('')||empty(t('暂无 SKILL，请导入 SKILL.md。'))}</div>`;
