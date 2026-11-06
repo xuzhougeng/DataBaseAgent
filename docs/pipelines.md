@@ -49,22 +49,24 @@ Each attempt lives in `<workDir>/<projectId>/<jobId>/attempt-N/`.
 ```
 mkdir -p attempt-N && cd attempt-N
 if [ -e submitted ]; exit 0                       # already running: never start twice
-mkdir .submit-lock || exit 75                     # concurrent start guard
+mkdir .submit-lock, or reclaim it when .submit-lock/owner is no longer alive, else exit 75
+echo $$ > .submit-lock/owner                      # released on exit, HUP, INT and TERM
 cat > run.sh <<'DBA_SCRIPT_<job>_<attempt>'        # generated script, unique heredoc marker
 …
 printf submitted > submitted
 nohup sh run.sh > run.log 2>&1 < /dev/null &
 echo $! > pid
+<start time of $! from /proc/$!/stat> > pid.start  # empty when /proc is unavailable
 ```
 
-A lost SSH acknowledgement therefore cannot cause a duplicate execution: the next start finds `submitted` and returns immediately.
+A lost SSH acknowledgement therefore cannot cause a duplicate execution: the next start finds `submitted` and returns immediately. A submitter whose SSH session is killed with `SIGKILL` cannot release the lock; the next start sees that the recorded owner is gone and reclaims it instead of failing until the job escalates.
 
 `run.sh` exports the `DBA_*` variables, creates the input and output directories, runs the steps inside a `set -e` subshell in `DBA_OUTPUT`, prints a `[DBA step i] name · tool` banner before each step, and finally writes the exit code to `exitcode.tmp` and renames it to `exitcode` (atomic marker).
 
 **Poll** reports one of:
 
 - `EXIT:<code>` when `exitcode` exists,
-- `RUNNING` when `pid` is alive,
+- `RUNNING` when `pid` is alive and its start time still matches `pid.start` (after a remote reboot the PID may belong to an unrelated process; jobs submitted before `pid.start` existed are checked by PID only),
 - `UNKNOWN` otherwise (no marker, process gone),
 
 followed by the last 64 KiB of `run.log`, which is stored on the job and shown in the UI.
@@ -73,7 +75,7 @@ followed by the last 64 KiB of `run.log`, which is stored on the job and shown i
 
 1. Remote: resolve with `realpath` and refuse anything outside `output/` (exit 65); report `sha256sum` and byte size (≤ 100 GiB).
 2. Local: if the file already exists with the same hash, skip. Otherwise stream from the remote with `tail -c +<offset+1>` into `<name>.partial`, resuming from the local partial size.
-3. Verify size and SHA-256; on mismatch truncate the partial and signal a retry. On success rename into place.
+3. Verify size and SHA-256; on mismatch truncate the partial and signal a retry. On success rename into place. If the stream stops early, the bytes already written are kept for the next attempt.
 
 Local results are stored under `<workspace>/projects/<projectId>/results/<jobId>/` next to `run_manifest.json`.
 
@@ -88,6 +90,7 @@ The loop (see [architecture.md](architecture.md#job-state-machine)) classifies w
 | Non-zero exit otherwise | Help request; resume phase `queued`. |
 | `UNKNOWN` | Help request asking the user to check the remote process; resume phase `running` (no re-execution). |
 | SSH / transfer error in any phase | `failures += 1`, back-off, stay in phase; after `maxRetries` consecutive failures, help request with the current phase as resume point. |
+| Sync error after new bytes were kept locally | `failures` restarts at 1 and the transfer resumes after back-off. A large file over a slow link is not escalated while it keeps advancing; a checksum mismatch or a file that changed during transfer resets the partial and counts as a failure. |
 
 The transient pattern is intentionally narrow:
 

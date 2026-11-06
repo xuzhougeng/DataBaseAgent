@@ -33,7 +33,7 @@ func main() {
 	if e != nil {
 		log.Fatal(e)
 	}
-	server := &http.Server{Handler: workbench.Handler(service, frontend.Assets), ReadHeaderTimeout: 10 * time.Second}
+	server := &http.Server{Handler: workbench.LoopbackOnly(workbench.Handler(service, frontend.Assets)), ReadHeaderTimeout: 10 * time.Second}
 	go func() { <-ctx.Done(); _ = server.Close() }()
 	log.Printf("DBA 本地开发预览: http://%s", listener.Addr())
 	if e = server.Serve(listener); e != nil && e != http.ErrServerClosed {

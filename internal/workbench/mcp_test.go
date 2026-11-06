@@ -55,6 +55,7 @@ func TestMCPDefaultsMigrationAndDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := NewService(st)
+	s.autoApprove = true
 	defer s.Stop()
 	for _, v := range defaults {
 		action(t, s, "deleteMCPServer", Request{MCPServerID: v.ID})

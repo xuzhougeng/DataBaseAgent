@@ -84,8 +84,15 @@ function trace(m,activeRun){
   const key=m.kind==='delegation'?m.id:(m.replyTo||m.id),items=m.trace||[],live=activeRun&&(m.kind==='delegation'?activeRun.delegationId===m.id:activeRun.messageId===key),failed=items.filter(x=>x.error).length;
   if(!items.length&&!live)return '';
   const child=m.kind==='delegation',tool=child||!activeRun?.subagentId?activeRun?.tool:'',worker=agents().find(a=>a.id===activeRun?.subagentId);
-  return `<details class="execution-trace" data-detail-id="trace-${key}" ${live?'open':''}><summary><span class="trace-icon ${live?'live':''}">${I(live?'activity':'flow')}</span><strong>${t('执行过程')}</strong><span>${t('已完成 {n} 次调用',{n:items.length})}${failed?' · '+t('{n} 次失败',{n:failed}):''}</span>${I('chevron')}</summary><div class="tool-timeline">${items.map((item,i)=>toolStep(item,i,false,key)).join('')}${live&&tool?toolStep({tool,args:activeRun.toolArgs,step:activeRun.step},items.length,true,key):''}${live&&!tool?`<div class="planning-step"><span class="thinking-dots"><i></i><i></i><i></i></span>${!child&&worker?t('主 Agent 已委派 {a}',{a:esc(t(worker.name))}):t(items.length?'正在整理结果与规划下一步…':'正在理解你的目标…')}<small>${t('第 {n} 步',{n:activeRun.step||1})}</small></div>`:''}</div></details>`;
+  return `<details class="execution-trace" data-detail-id="trace-${key}" ${live?'open':''}><summary><span class="trace-icon ${live?'live':''}">${I(live?'activity':'flow')}</span><strong>${t('执行过程')}</strong><span>${t('已完成 {n} 次调用',{n:items.length})}${failed?' · '+t('{n} 次失败',{n:failed}):''}</span>${I('chevron')}</summary><div class="tool-timeline">${items.map((item,i)=>toolStep(item,i,false,key)).join('')}${live&&tool?toolStep({tool,args:activeRun.toolArgs,step:activeRun.step},items.length,true,key):''}${live&&activeRun.approvalId&&(child||!activeRun.subagentId)?approvalCard(approvalById(activeRun.approvalId)):''}${live&&!tool?`<div class="planning-step"><span class="thinking-dots"><i></i><i></i><i></i></span>${!child&&worker?t('主 Agent 已委派 {a}',{a:esc(t(worker.name))}):t(items.length?'正在整理结果与规划下一步…':'正在理解你的目标…')}<small>${t('第 {n} 步',{n:activeRun.step||1})}</small></div>`:''}</div></details>`;
 }
+function approvalById(id){return (meta.approvals||[]).find(a=>a.id===id);}
+function approvalCard(ap){
+  if(!ap)return '';
+  const a=agents().find(x=>x.id===ap.agentId);
+  return `<div class="approval-card" role="alert"><strong>${I('alert')}${t('{a} 请求确认',{a:esc(t(a?.name||ap.agentId))})}<code>${esc(ap.tool)}</code></strong><p>${esc(t(ap.reason))}</p>${ap.detail?`<pre class="approval-detail">${esc(ap.detail)}</pre>`:''}<details><summary>${t('查看调用参数')}</summary><pre>${esc(ap.args)}</pre></details><div class="decision">${btn(t('允许执行'),`decideApproval('${ap.id}',true)`,'small primary','check',ui.busy.has('decideApproval'))}${btn(t('拒绝'),`decideApproval('${ap.id}',false)`,'small','close',ui.busy.has('decideApproval'))}</div></div>`;
+}
+function decideApproval(id,approve){run(async()=>{await act('decideApproval',{approvalId:id,approve},approve?'已允许执行':'已拒绝');});}
 function chatMessage(msg,run){
   if(msg.kind==='delegation')return delegationMessage(msg,run);
   const user=msg.role==='user',failed=['failed','cancelled','interrupted'].includes(msg.status),a=agents().find(a=>a.id===msg.agent);

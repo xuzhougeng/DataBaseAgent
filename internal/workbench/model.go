@@ -193,6 +193,7 @@ type AgentRun struct {
 	Tool           string `json:"tool"`
 	ToolArgs       string `json:"toolArgs,omitempty"`
 	ToolStartedAt  string `json:"toolStartedAt,omitempty"`
+	ApprovalID     string `json:"approvalId,omitempty"` // set while the current tool waits for the user's confirmation
 }
 
 // Trace records one tool invocation inside an agent loop step.

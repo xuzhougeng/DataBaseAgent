@@ -7,15 +7,16 @@ DBA is a single Go binary with an embedded web UI. The scheduler, persistent con
 | Component | File | Responsibility |
 | --- | --- | --- |
 | Store | `internal/workbench/store.go` | Owns the in-memory `State`, serializes it to `workbench.json` atomically, performs schema migration on open, rolls back failed transactions. |
-| Service | `internal/workbench/service.go` | Dispatches UI commands (`createProject`, `review`, `lockPipeline`, `launch`, `saveModel`, …), validates input, enforces quotas and the recorded-inclusion gate. |
+| Service | `internal/workbench/service.go`, `commands.go` | `Dispatch` looks up a named command (`createProject`, `review`, `lockPipeline`, `launch`, `saveModel`, …) in one table. State-only commands run as a single `Store.Update` transaction; commands that reach the network, SSH or the system keychain manage their own locking so slow I/O never holds the state lock. Validation, quotas and the recorded-inclusion gate live in the commands. |
+| Approvals | `internal/workbench/approvals.go` | Holds agent tool calls with effects outside the workspace record until the user allows or denies them (see [agents.md](agents.md#approvals-and-boundaries)). |
 | Loop | `internal/workbench/loop.go` | The supervision loop: wakes every `intervalSeconds`, observes in-flight jobs, dispatches queued jobs within quotas, classifies failures, schedules retries, escalates to help requests, archives results. |
 | Discovery | `internal/workbench/discovery.go` | Europe PMC, PubMed and GEO adapters; paging, rate limiting, candidate normalization and de-duplication. |
 | Agents | `internal/workbench/agent.go` | Preset personas, validated command tools (`agent_tools.go`), the bounded tool-use loop, shared project chat and the batch reviewer. `agent_delegation.go` handles mentions and main-agent delegation to specialists. |
 | LLM | `internal/workbench/llm.go` | Protocol adapters that translate a neutral conversation model to OpenAI Chat Completions, Anthropic Messages and Gemini generateContent. |
 | Conversations | `internal/workbench/conversations.go`, `frontend/conversations.js` | Independent histories, durable message queues, cancellation, crash recovery, drafts, and tool execution timelines. |
 | Executor | `internal/workbench/ssh.go` | The `Executor` interface and its SSH implementation: probe, idempotent start, poll, resumable verified sync. |
-| HTTP | `internal/workbench/http.go` | Serves embedded assets and the JSON API; enforces same-origin, JSON-only POSTs and a 4 MiB body limit. |
-| Frontend | `frontend/workbench.js`, `frontend/conversations.js` | Vanilla JS rendering the workbench and conversations from state snapshots. Polls `/api/state` every 3 s; conversation updates preserve draft input and scroll position, including while typing. |
+| HTTP | `internal/workbench/http.go` | Serves embedded assets and the JSON API; enforces same-origin, JSON-only POSTs and a 4 MiB body limit. `/api/state` carries an ETag; the preview server additionally accepts only loopback host names. |
+| Frontend | `frontend/workbench.js`, `frontend/conversations.js` | Vanilla JS rendering the workbench and conversations from state snapshots. Polls `/api/state` every 3 s with `If-None-Match`, so an unchanged workspace answers `304` without serialization or re-rendering; conversation updates preserve draft input and scroll position, including while typing. |
 
 The desktop shell (`main.go`) wires `Store → Service → Loop` and hands the HTTP handler to Wails as the asset handler. `cmd/dba-server` does the same behind `net/http` on `127.0.0.1` for browser development; both share every line of application code.
 
@@ -78,9 +79,10 @@ Back-off is `min(300, 10 × 2^min(n,5))` seconds: 20 s, 40 s, 80 s, 160 s, then 
 ## Scheduler tick
 
 1. A `time.Ticker` fires every 2 s; a tick runs only when `intervalSeconds` have elapsed since the last tick and the loop is not paused. Ticks are mutually exclusive (`TryLock`).
-2. `retry_wait` jobs whose `retryAt` has passed are moved back to `queued`.
-3. Existing work is observed first: every `starting` / `running` / `syncing` job not currently in flight and not waiting on back-off gets a goroutine (`operate`). At most 8 operations run concurrently.
-4. Only then are `queued` jobs dispatched. Reservation is a single transactional update that checks the server's `maxJobs` and `cpuQuota` and the pipeline's per-project `concurrency` against all in-flight jobs (including help requests whose resume phase is active). If any budget is exceeded, the job simply stays queued.
+2. Steps 3–5 are one transaction, written once per tick. `retry_wait` jobs whose `retryAt` has passed are moved back to `queued`.
+3. Existing work is observed first: every `starting` / `running` / `syncing` job not currently in flight and not waiting on back-off is selected for an operation. At most 8 operations run concurrently.
+4. Only then are `queued` jobs reserved, in order, against the server's `maxJobs` and `cpuQuota` and the pipeline's per-project `concurrency`, counting all in-flight jobs (including help requests whose resume phase is active) and the reservations made earlier in the same pass. A job over any budget simply stays queued.
+5. After the transaction commits, each selected or reserved job gets its own goroutine (`operate`). If the write fails, nothing starts.
 5. Per-operation timeouts: 45 s for start/poll, 30 min for sync.
 
 Shutdown cancels the service context. Remote-job supervision resumes from its last durable snapshot on the next launch. Conversation requests retain completed changes, record an interruption, and leave subsequent messages paused for explicit review and resumption.
@@ -88,7 +90,9 @@ Shutdown cancels the service context. Remote-job supervision resumes from its la
 ## Persistence
 
 - Every mutation goes through `Store.Update(fn)`. The previous state is captured, `fn` runs, and on error the state is restored byte-for-byte.
-- On success the whole document is marshalled, written to a temp file in the workspace, fsynced, and renamed over `workbench.json`. A crash leaves either the old or the new file, never a mix.
+- On success the whole document is marshalled, written to a temp file in the workspace, fsynced, and renamed over `workbench.json`. A crash leaves either the old or the new file, never a mix. A transaction that changes nothing is not written, and each committed write advances an in-memory version used for the `/api/state` ETag.
+- Short read-only paths (the scheduler's due check, command guards, state polling) use `Store.Read` under the read lock instead of copying the workspace with `Snapshot`.
+- The audit trail keeps the newest 2000 events, of which at most 500 are agent activity, so tool calls cannot push review, job and help events out. Successful read-only tool calls stay in the conversation trace without an audit event.
 - `Open` refuses to load a file it cannot parse ("corrupted, original preserved") and refuses unknown schema versions. Schema 1 workspaces (v0.1) migrate their flat model settings into an `openai` profile and attribute untagged messages to the Project Assistant. Schema 1 and 2 histories then receive stable conversation/message IDs; migration and interrupted-request recovery are saved atomically before opening the workspace.
 - Agent presets are merged on open: canonical order, icons and tool scopes always come from code; the user's instructions, model choice and step budget are preserved.
 
@@ -96,12 +100,12 @@ Shutdown cancels the service context. Remote-job supervision resumes from its la
 
 | Boundary | Enforcement |
 | --- | --- |
-| Network exposure | The preview server binds `127.0.0.1` only. Any request carrying an `Origin` header must match the `Host`, which blocks cross-site POSTs from a browser. |
+| Network exposure | The preview server binds `127.0.0.1` only and rejects any `Host` other than `localhost`, `127.0.0.1` or `::1`, which stops DNS-rebinding pages (their `Origin` and `Host` match each other). Any request carrying an `Origin` header must match the `Host`, which blocks cross-site POSTs from a browser. |
 | Request hygiene | POST bodies must be `application/json` and ≤ 4 MiB; unknown actions are rejected. |
-| Credentials | SSH uses `BatchMode=yes` and `StrictHostKeyChecking=yes`, and exports strip private-key paths. DBA stores directly entered model keys in the system credential store and keeps only references in the workspace. Existing model profiles can read their configured environment variable. |
+| Credentials | SSH uses `BatchMode=yes` and `StrictHostKeyChecking=yes`, and exports strip private-key paths. DBA stores directly entered model keys in the system credential store and keeps only references in the workspace; keychain reads and writes happen outside the state lock. A stored key never follows a profile to another protocol or origin without being re-entered, and agents cannot choose key sources. Existing model profiles can read their configured environment variable. |
 | Paths | Output names must be safe relative paths (`[A-Za-z0-9._-/]`, no `..`, no absolute paths). The remote side re-checks with `realpath` that each file is inside `output/`; the local side confines artifact previews to the workspace. |
 | Untrusted content | Titles, abstracts, logs and tool results are passed to models as data with explicit instructions to ignore embedded directives; model output is validated (JSON shape, enum values, verbatim evidence) before anything is stored. |
-| Write authority | Role-scoped tools dispatch the same validated Service commands as the UI. Project tools resolve a project ID; candidate/job mutations check membership. No generic shell or recursive chat tool is exposed. |
+| Write authority | Role-scoped tools dispatch the same validated Service commands as the UI. A project conversation's tools are confined to that project; candidate/job mutations check membership. Launching or resuming jobs, registering servers, changing model or agent configuration and non-read-only MCP calls wait for the user's approval. No generic shell or recursive chat tool is exposed. |
 
 ## Request flow
 
@@ -112,5 +116,5 @@ UI action ──POST /api/<action>──▶ Handler ──▶ Service.Dispatch �
                                                    ├── message ──▶ Agent loop ──▶ LLM adapter ──▶ tools (fresh snapshot / Service commands)
                                                    ├── reviewAgent ──▶ LLM adapter ──▶ evidence check
                                                    └── tick / probe ──▶ Executor (SSH)
-UI ◀──GET /api/state (3 s poll)── State snapshot + per-agent readiness + key status
+UI ◀──GET /api/state (3 s poll, ETag / 304)── State + per-agent readiness + key status + pending approvals
 ```

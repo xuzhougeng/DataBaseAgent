@@ -16,7 +16,7 @@ Preferences shows model names in a compact list. **Add model** opens a dialog; c
 
 DBA saves the key in the current user's system credential store (macOS Keychain, Windows Credential Manager, or a Linux Secret Service provider such as GNOME Keyring). The workspace stores a credential reference. Re-enter the key if you move the workspace to a different directory or machine.
 
-When editing a model, leave the API key blank to keep its current settings. Enter a new key to replace them or select **Remove current key settings** to use the model without a key. Profiles created in older versions keep reading their configured environment variable until you replace or remove the key settings.
+When editing a model, leave the API key blank to keep its current settings. Changing the protocol, or the scheme, host or port of the base URL, of a profile with a stored key requires entering the key again, so a saved key is never sent to a different service; path changes on the same host keep it. Agents can edit model profiles only after your approval and cannot set or change a key source. Enter a new key to replace them or select **Remove current key settings** to use the model without a key. Profiles created in older versions keep reading their configured environment variable until you replace or remove the key settings.
 
 ## Protocols
 

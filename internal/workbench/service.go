@@ -10,7 +10,6 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 )
@@ -29,13 +28,15 @@ type Service struct {
 	chatErrors   map[string]string
 	chatWG       sync.WaitGroup
 	inFlight     map[string]bool
+	approvals    map[string]*Approval
+	autoApprove  bool // tests only: the desktop app always asks the user
 	ctx          context.Context
 	cancel       context.CancelFunc
 }
 
 func NewService(store *Store) *Service {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Service{Store: store, Runner: &SSHExecutor{}, ctx: ctx, cancel: cancel, inFlight: map[string]bool{}, agentRuns: map[string]AgentRun{}, agentCancels: map[string]context.CancelFunc{}, chatWorkers: map[string]bool{}, chatWaiters: map[string]chan error{}, chatErrors: map[string]string{}}
+	return &Service{Store: store, Runner: &SSHExecutor{}, ctx: ctx, cancel: cancel, inFlight: map[string]bool{}, agentRuns: map[string]AgentRun{}, agentCancels: map[string]context.CancelFunc{}, chatWorkers: map[string]bool{}, chatWaiters: map[string]chan error{}, chatErrors: map[string]string{}, approvals: map[string]*Approval{}}
 }
 func (s *Service) Stop() {
 	s.cancel()
@@ -93,6 +94,8 @@ type Request struct {
 	APIKey         *string      `json:"apiKey,omitempty"` // omitted keeps the stored key; empty removes it
 	MCPServer      MCPServer    `json:"mcpServer"`
 	MCPServerID    string       `json:"mcpServerId"`
+	ApprovalID     string       `json:"approvalId"`
+	Approve        bool         `json:"approve"`
 }
 
 func decode(raw json.RawMessage) (Request, error) {
@@ -100,324 +103,45 @@ func decode(raw json.RawMessage) (Request, error) {
 	err := json.Unmarshal(raw, &r)
 	return r, err
 }
+
+// Dispatch runs one named command. UI requests and agent tools share this path,
+// so every write passes the same validation.
 func (s *Service) Dispatch(ctx context.Context, action string, raw json.RawMessage) (any, error) {
+	cmd, ok := commands[action]
+	if !ok {
+		return nil, errors.New("未知操作")
+	}
 	r, err := decode(raw)
 	if err != nil {
 		return nil, err
 	}
-	if r.ProjectID != "" {
-		switch action {
-		case "search", "importCandidates", "review", "reviewAgent", "savePipeline", "lockPipeline", "launch":
-			st := s.Store.Snapshot()
-			p, e := projectByID(&st, r.ProjectID)
+	if cmd.collect && r.ProjectID != "" {
+		if err := s.Store.Read(func(st *State) error {
+			p, e := projectByID(st, r.ProjectID)
 			if e != nil {
-				return nil, e
+				return e
 			}
 			if projectMode(p) == ModeStatic {
-				return nil, errors.New("已有数据模式直接建立静态网站，无需检索、复核或远程处理")
+				return errors.New("已有数据模式直接建立静态网站，无需检索、复核或远程处理")
 			}
+			return nil
+		}); err != nil {
+			return nil, err
 		}
 	}
-	switch action {
-	case "saveMCPServer", "deleteMCPServer":
-		return s.manageMCPServer(action, r)
-	case "testMCPServer":
-		return s.testMCPServer(ctx, r.MCPServerID)
-	case "search":
-		return s.Search(ctx, r)
-	case "probeServer":
-		return nil, s.Probe(ctx, r.ServerID)
-	case "reviewAgent":
-		return nil, s.AgentReview(ctx, r.ProjectID, r.CandidateID)
-	case "message":
-		return nil, s.Chat(ctx, r.ProjectID, r.AgentID, r.Message)
-	case "enqueueMessage":
-		return s.enqueueMessage(r, nil, false)
-	case "editQueuedMessage", "cancelMessage", "resumeChatQueue", "pauseChatQueue", "updateConversation":
-		return nil, s.manageConversation(action, r)
-	case "tick":
-		return nil, s.Tick(ctx)
-	case "exportManifest":
-		return s.ExportManifest(r.ProjectID)
-	case "openURL":
-		return nil, openURL(r.URL)
+	if cmd.run != nil {
+		return cmd.run(s, ctx, r)
 	}
-	var newKeyRef, oldKeyRef string
 	var result any
 	err = s.Store.Update(func(st *State) error {
-		switch action {
-		case "importSkill", "toggleSkill", "deleteSkill":
-			var e error
-			result, e = updateSkill(st, action, r)
-			return e
-		case "buildStaticSite":
-			p, e := projectByID(st, r.ProjectID)
-			if e != nil {
-				return e
-			}
-			if projectMode(p) != ModeStatic {
-				return errors.New("收集模式目前止于数据收集与分析，不支持建站")
-			}
-			site, e := newStaticSite(r.Name, r.Description, r.Format, r.Data)
-			if e != nil {
-				return e
-			}
-			if e := applySiteTemplate(st, r.SkillID, site); e != nil {
-				return e
-			}
-			p.Site, p.UpdatedAt = site, now()
-			result = map[string]any{"projectId": p.ID, "rows": len(site.Rows), "builtAt": site.BuiltAt}
-			event(st, p.ID, "", "user", "静态网站已生成", site.Title)
-		case "createProject":
-			if r.Mode == "" {
-				r.Mode = ModeCollect
-			}
-			if r.Mode != ModeStatic && r.Mode != ModeCollect {
-				return errors.New("无效的项目模式")
-			}
-			if strings.TrimSpace(r.Name) == "" {
-				return errors.New("请输入项目名称")
-			}
-			p := Project{ID: id("project"), Mode: r.Mode, Name: strings.TrimSpace(r.Name), Description: r.Description, Source: "Europe PMC", Candidates: []Candidate{}, Searches: []SearchRecord{}, Versions: []Pipeline{}, Messages: []Message{}, Draft: defaultPipeline(), CreatedAt: now(), UpdatedAt: now()}
-			st.Projects = append(st.Projects, p)
-			result = map[string]string{"projectId": p.ID, "name": p.Name}
-			event(st, p.ID, "", "user", "项目已创建", p.Name)
-		case "saveProject":
-			p, e := projectByID(st, r.ProjectID)
-			if e != nil {
-				return e
-			}
-			if strings.TrimSpace(r.Name) == "" {
-				return errors.New("项目名称不能为空")
-			}
-			p.Name = strings.TrimSpace(r.Name)
-			p.Description = r.Description
-			p.Organism = r.Organism
-			p.Assay = r.Assay
-			p.Criteria = r.Criteria
-			p.Query = r.Query
-			p.Source = r.Source
-			p.UpdatedAt = now()
-			event(st, p.ID, "", "user", "研究范围与检索策略已保存", p.Query)
-		case "importCandidates":
-			p, e := projectByID(st, r.ProjectID)
-			if e != nil {
-				return e
-			}
-			if len(r.Candidates) == 0 || len(r.Candidates) > 1000 {
-				return errors.New("每次导入 1–1000 条记录")
-			}
-			added := mergeCandidates(p, r.Candidates)
-			event(st, p.ID, "", "user", "候选数据已导入", strconv.Itoa(added)+" 条新增记录")
-		case "review":
-			p, e := projectByID(st, r.ProjectID)
-			if e != nil {
-				return e
-			}
-			if r.Decision != "accepted" && r.Decision != "excluded" && r.Decision != "pending" {
-				return errors.New("无效的复核结论")
-			}
-			if strings.TrimSpace(r.Note) == "" {
-				return errors.New("请填写复核理由")
-			}
-			for i := range p.Candidates {
-				c := &p.Candidates[i]
-				if c.ID == r.CandidateID {
-					if r.DownloadURL != "" {
-						if e := validHTTPURL(r.DownloadURL); e != nil {
-							return e
-						}
-					}
-					c.Decision = r.Decision
-					c.ReviewNote = r.Note
-					c.Groups = r.Groups
-					c.DownloadURL = r.DownloadURL
-					c.Accession = r.Accession
-					c.ReviewedAt = now()
-					c.ReviewedBy = "user"
-					if actor, ok := ctx.Value(agentActorKey{}).(string); ok {
-						c.ReviewedBy = "agent:" + actor
-					}
-					event(st, p.ID, "", "review", "复核已记录 · "+c.ReviewedBy, c.Title+" → "+r.Decision+"；"+r.Note)
-					return nil
-				}
-			}
-			return errors.New("候选记录不存在")
-		case "savePipeline", "lockPipeline":
-			p, e := projectByID(st, r.ProjectID)
-			if e != nil {
-				return e
-			}
-			v := r.Pipeline
-			v.Locked = false
-			v.ID = ""
-			v.Version = 0
-			if action == "lockPipeline" {
-				if e := validatePipeline(st, v); e != nil {
-					return e
-				}
-				v.ID = id("pipeline")
-				v.Version = len(p.Versions) + 1
-				v.CreatedAt = now()
-				v.Locked = true
-				p.Versions = append(p.Versions, v)
-				event(st, p.ID, "", "user", "流程版本已锁定", "v"+strconv.Itoa(v.Version)+" · "+v.Name)
-			}
-			p.Draft = v
-			result = v
-			p.UpdatedAt = now()
-		case "addServer":
-			v := r.Server
-			if e := validateServer(v); e != nil {
-				return e
-			}
-			v.ID = id("server")
-			v.Status = "unchecked"
-			st.Servers = append(st.Servers, v)
-			result = map[string]string{"serverId": v.ID, "name": v.Name}
-			event(st, "", "", "user", "服务器配置已保存", v.Name)
-		case "launch":
-			return queueJobs(st, r.ProjectID)
-		case "resolveJob":
-			j, e := jobByID(st, r.JobID)
-			if e != nil {
-				return e
-			}
-			if j.Status != "needs_help" {
-				return errors.New("任务当前没有待处理求助")
-			}
-			if strings.TrimSpace(r.Note) == "" {
-				return errors.New("请说明已完成的修复")
-			}
-			if r.Groups != "" {
-				if e := validateGroups(r.Groups); e != nil {
-					return e
-				}
-				j.Input.Groups = r.Groups
-			}
-			j.Error = ""
-			j.Help = ""
-			j.Failures = 0
-			j.RetryAt = ""
-			j.UpdatedAt = now()
-			j.Status = "queued"
-			if j.ResumeStatus == "syncing" || j.ResumeStatus == "running" || j.ResumeStatus == "starting" {
-				j.Status = j.ResumeStatus
-			}
-			j.ResumeStatus = ""
-			event(st, j.ProjectID, j.ID, "user", "处理完成，任务恢复", r.Note)
-		case "settings":
-			v := r.Settings
-			if v.IntervalSeconds < 10 || v.IntervalSeconds > 86400 || v.MaxRetries < 0 || v.MaxRetries > 10 {
-				return errors.New("巡检间隔需为 10–86400 秒，重试次数需为 0–10")
-			}
-			st.Settings.Paused, st.Settings.IntervalSeconds, st.Settings.MaxRetries = v.Paused, v.IntervalSeconds, v.MaxRetries
-			event(st, "", "", "user", "巡检设置已更新", fmt.Sprintf("每 %d 秒巡检，最多重试 %d 次", v.IntervalSeconds, v.MaxRetries))
-		case "saveModel":
-			v := r.Model
-			v.APIKeyRef = ""
-			v.Name, v.Model, v.APIKeyEnv = strings.TrimSpace(v.Name), strings.TrimSpace(v.Model), strings.TrimSpace(v.APIKeyEnv)
-			if v.Name == "" || v.Model == "" || !protocols[v.Protocol] {
-				return errors.New("请填写模型名称、模型 ID，并选择协议")
-			}
-			if e := validHTTPURL(v.BaseURL); e != nil {
-				return e
-			}
-			if r.APIKey != nil {
-				v.APIKeyEnv = ""
-				if key := strings.TrimSpace(*r.APIKey); key != "" {
-					ref, err := s.Store.saveModelKey(key)
-					newKeyRef = ref
-					if err != nil {
-						return err
-					}
-					v.APIKeyRef = newKeyRef
-				}
-			} else if v.APIKeyEnv != "" && !regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`).MatchString(v.APIKeyEnv) {
-				return errors.New("API Key 环境变量名无效")
-			}
-			replaced := false
-			for i := range st.Settings.Models {
-				if st.Settings.Models[i].ID == v.ID {
-					if r.APIKey == nil {
-						v.APIKeyRef = st.Settings.Models[i].APIKeyRef
-					} else {
-						oldKeyRef = st.Settings.Models[i].APIKeyRef
-					}
-					st.Settings.Models[i] = v
-					replaced = true
-					break
-				}
-			}
-			if !replaced {
-				v.ID = id("model")
-				st.Settings.Models = append(st.Settings.Models, v)
-			}
-			result = map[string]string{"modelId": v.ID, "name": v.Name}
-			event(st, "", "", "user", "模型配置已保存", v.Name+" · "+v.Protocol+" · "+v.Model)
-		case "deleteModel":
-			kept := []ModelProfile{}
-			for _, m := range st.Settings.Models {
-				if m.ID != r.ModelID {
-					kept = append(kept, m)
-				} else {
-					oldKeyRef = m.APIKeyRef
-				}
-			}
-			if len(kept) == len(st.Settings.Models) {
-				return errors.New("模型不存在")
-			}
-			st.Settings.Models = kept
-			for i := range st.Settings.Agents {
-				if st.Settings.Agents[i].ModelID == r.ModelID {
-					st.Settings.Agents[i].ModelID = ""
-				}
-			}
-			event(st, "", "", "user", "模型配置已删除", r.ModelID)
-		case "saveAgent":
-			v := r.Agent
-			a, e := agentByID(st, v.ID)
-			if e != nil {
-				return e
-			}
-			if strings.TrimSpace(v.System) == "" || len(v.System) > 8000 || v.MaxSteps < 1 || v.MaxSteps > 20 {
-				return errors.New("请填写不超过 8000 字节的指令，步数上限需为 1–20")
-			}
-			if v.ModelID != "" {
-				found := false
-				for _, m := range st.Settings.Models {
-					found = found || m.ID == v.ModelID
-				}
-				if !found {
-					return errors.New("所选模型不存在")
-				}
-			}
-			a.System, a.ModelID, a.MaxSteps = strings.TrimSpace(v.System), v.ModelID, v.MaxSteps
-			event(st, "", "", "user", "Agent 配置已保存", a.Name)
-		case "resetAgent":
-			a, e := agentByID(st, r.AgentID)
-			if e != nil {
-				return e
-			}
-			for _, p := range presetAgents {
-				if p.ID == a.ID {
-					a.System, a.MaxSteps = p.System, p.MaxSteps
-				}
-			}
-			event(st, "", "", "user", "Agent 指令已恢复默认", a.Name)
-		default:
-			return errors.New("未知操作")
-		}
-		return nil
+		var e error
+		result, e = cmd.apply(s, ctx, st, r)
+		return e
 	})
-	// A new credential gets its own reference, so a failed workspace write leaves
-	// the previous credential usable and never points at an uncommitted key.
 	if err != nil {
-		s.Store.deleteModelKey(newKeyRef)
-	} else {
-		s.Store.deleteModelKey(oldKeyRef)
+		return nil, err
 	}
-	return result, err
+	return result, nil
 }
 
 func validHTTPURL(raw string) error {
