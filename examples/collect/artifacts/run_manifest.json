@@ -1,0 +1,7 @@
+{
+  "dataset": "DEMO-0067",
+  "pipeline": "gpsa-rnaseq@1.2",
+  "reference": "GRCh38",
+  "status": "succeeded",
+  "demo": true
+}

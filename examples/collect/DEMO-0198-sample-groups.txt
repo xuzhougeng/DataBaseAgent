@@ -1,0 +1,4 @@
+sample_01, control
+sample_02, control
+sample_03, treatment
+sample_04, treatment

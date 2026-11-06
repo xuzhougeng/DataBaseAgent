@@ -1,0 +1,17 @@
+{
+  "demo": true,
+  "project": "GPSA 虚拟扰动数据库",
+  "workflow": "gpsa-rnaseq@1.2",
+  "datasets": [
+    {
+      "id": "DEMO-0067",
+      "files": [
+        "expression_matrix.tsv",
+        "differential_expression.tsv",
+        "qc_report.html",
+        "run_manifest.json"
+      ]
+    }
+  ],
+  "note": "DBA 设计稿示例，不包含真实分析数据"
+}
