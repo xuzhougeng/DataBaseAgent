@@ -10,7 +10,9 @@ The GEO reproduction, with real accessions and checksums, stays in [docs/manuscr
 
 Every build embeds these files, so installers ship them too. Open **Examples** in the sidebar, or **Explore examples** on **All projects**. Each example page previews the result without changing the workspace: the generated website for the two static templates, or topic, candidates, sample groups, outputs and data contract for collect mode. Each file can be downloaded. **Create example project** adds one project with the data loaded (the website built, or the candidates imported as pending). Opening the same example later goes back to that project.
 
-[catalog.json](catalog.json) lists what the page shows. When you add an example, list its files there and add English strings for its gallery text to `frontend/i18n.js`. `node scripts/check-i18n.js` checks them.
+The example data follows the app language. In English the page, the website preview, the downloads and a new example project use the English copies in [en/](en/): `static/*.tsv`, `collect/candidates.json`, `collect/dba_demo_manifest.json` and `collect/data-contract.json`, translated value by value with the same columns, rows and keys. The artifacts and sample groups have no Chinese text and are shared. Each language gets its own example project.
+
+[catalog.json](catalog.json) lists what the page shows. When you add an example, list its files there, give each file that contains Chinese text an `en` copy, add `projectEn`, and add English strings for its gallery text to `frontend/i18n.js`. `node scripts/check-i18n.js` checks the gallery text, and `go test ./internal/workbench/ -run Example` checks that English mode shows no Chinese data and that each copy keeps the original's shape.
 
 ## Files
 

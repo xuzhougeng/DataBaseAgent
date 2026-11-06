@@ -1,0 +1,23 @@
+[
+  {
+    "title": "Transcriptomic profiling of TP53 loss in human epithelial cells",
+    "source": "Design demo",
+    "accession": "DEMO-0142",
+    "organism": "Homo sapiens",
+    "abstract": "Demo abstract: RNA-seq of TP53 knockout cells and non-targeting controls, three biological replicates each."
+  },
+  {
+    "title": "Context-dependent transcriptional responses to MYC silencing",
+    "source": "Design demo",
+    "accession": "DEMO-0198",
+    "organism": "Homo sapiens",
+    "abstract": "Demo abstract: MYC silencing across several cell lines; the data files do not state every control–treatment pairing."
+  },
+  {
+    "title": "Perturbation of chromatin regulators reshapes cell identity",
+    "source": "Design demo",
+    "accession": "DEMO-0236",
+    "organism": "Homo sapiens",
+    "abstract": "Demo abstract: a pooled CRISPR screen measuring cell proliferation and survival; no RNA-seq data."
+  }
+]

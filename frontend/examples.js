@@ -1,15 +1,21 @@
 'use strict';
 // Built-in examples (examples/catalog.json, embedded in the binary). Previews only read;
-// "创建示例项目" adds one project per example and reopens it on later clicks.
+// "创建示例项目" adds one project per example and language and reopens it on later clicks.
+// The data follows the UI language: switching refetches the catalog in that language.
 
-let exampleCatalog=null,exampleLoad=null,exampleError='';
+let exampleCatalog=null,exampleLoad=null,exampleLoadLang='',exampleError='';
 function exampleList(){
-  if(!exampleLoad)exampleLoad=request('examples').then(r=>{exampleCatalog=r.examples||[];render();}).catch(e=>{exampleError=e.message||String(e);render();});
+  if(!exampleLoad||exampleLoadLang!==lang){
+    const want=exampleLoadLang=lang;exampleError='';
+    exampleLoad=request('examples?lang='+want).then(r=>{if(want===lang){exampleCatalog=r.examples||[];render();}}).catch(e=>{if(want===lang){exampleError=e.message||String(e);render();}});
+  }
   return exampleCatalog||[];
 }
 function retryExamples(){exampleLoad=null;exampleError='';render();}
 const exampleById=id=>(exampleCatalog||[]).find(ex=>ex.id===id);
-const exampleProject=ex=>db.projects.find(p=>p.example===ex.id);
+const exampleDataLang=()=>lang==='en'?'en':'zh';
+const exampleProject=ex=>db.projects.find(p=>p.example===ex.id&&(p.exampleLang||'zh')===exampleDataLang());
+const exampleSiteURL=id=>`/api/example-site?id=${encodeURIComponent(id)}&lang=${exampleDataLang()}`;
 const fileName=path=>path.split('/').pop();
 function openExample(id){ui.exampleId=id;go('examples');}
 function examplesHome(){ui.exampleId='';go('examples');}
@@ -54,7 +60,7 @@ function exampleRows(ex){
 function exampleWebsite(ex){
   const tpl=ex.template||{},facts=[[t('模板'),`${t(tpl.label||'')} · ${ex.skill}`],[t('布局'),t(tpl.layout==='cards'?'卡片布局':'表格布局')],[t('必需字段'),(tpl.requiredColumns||[]).join(', ')||'—'],[t('记录'),t('{n} 条记录',{n:exampleRows(ex).length})]];
   return `<div class="example-facts">${facts.map(([k,v])=>`<div><small>${esc(k)}</small><strong>${esc(v)}</strong></div>`).join('')}</div>
-    <section class="card"><div class="card-head"><div><h2>${t('网站预览')}</h2><small>${t('与生成的网站相同，可以在其中搜索。')}</small></div></div><iframe class="site-preview" title="${t('网站预览')}" sandbox="allow-scripts" src="/api/example-site?id=${encodeURIComponent(ex.id)}"></iframe></section>
+    <section class="card"><div class="card-head"><div><h2>${t('网站预览')}</h2><small>${t('与生成的网站相同，可以在其中搜索。')}</small></div></div><iframe class="site-preview" title="${t('网站预览')}" sandbox="allow-scripts" src="${exampleSiteURL(ex.id)}"></iframe></section>
     ${exampleGroups(ex,false)}
     <section class="card"><div class="card-head"><h2>${t('自己动手')}</h2></div><ol class="example-howto">${[t('所有项目 → 新建项目 → 已有数据 · 静态网站'),t('在“静态网站”页选择模板“{t}”',{t:t(tpl.label||ex.skill)}),t('导入上面的 {f}，扩展名会选中对应格式',{f:fileName(ex.siteData)}),t('生成静态网站，预览后下载 HTML')].map(s=>`<li>${esc(s)}</li>`).join('')}</ol></section>`;
 }
@@ -90,7 +96,7 @@ function confirmExampleProject(id){
   modal(t('创建示例项目'),`<p>${t('将在工作空间新建项目“{n}”，并载入示例数据。',{n:esc(ex.project.name)})}</p><p class="muted">${t(ex.mode==='static'?'网站会直接生成；之后可在静态网站页修改数据并重新生成。':'候选记录导入后为待复核，可在“数据复核”页逐条判断。')}</p><p class="muted">${t('当前版本不能删除项目。之后再点这个示例，会打开同一个项目。')}</p>`,btn(t('创建并打开'),`createExampleProject('${ex.id}')`,'primary','plus'));
 }
 function createExampleProject(id){
-  run(async()=>{const r=(await act('createExampleProject',{exampleId:id},'')).result;closeModal();toast(t(r.created?'示例项目已创建':'已打开现有的示例项目'));selectProject(r.projectId);});
+  run(async()=>{const r=(await act('createExampleProject',{exampleId:id,lang:exampleDataLang()},'')).result;closeModal();toast(t(r.created?'示例项目已创建':'已打开现有的示例项目'));selectProject(r.projectId);});
 }
 function saveBlob(name,blob){
   const url=URL.createObjectURL(blob),link=document.createElement('a');
@@ -101,5 +107,5 @@ function downloadExampleFile(id,index){
   if(f)saveBlob(fileName(f.path),new Blob([f.text],{type:'text/plain;charset=utf-8'}));
 }
 function downloadExampleSite(id){
-  run(async()=>{const res=await fetch('/api/example-site?id='+encodeURIComponent(id)+'&download=1');if(!res.ok)throw new Error(t('下载失败'));saveBlob('index.html',await res.blob());});
+  run(async()=>{const res=await fetch(exampleSiteURL(id)+'&download=1');if(!res.ok)throw new Error(t('下载失败'));saveBlob('index.html',await res.blob());});
 }

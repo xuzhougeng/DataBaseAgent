@@ -88,6 +88,9 @@ func Open(root string) (*Store, error) {
 		s.state.Skills = defaultSkills()
 		changed = true
 	}
+	if upgradeBundledSkills(s.state.Skills) {
+		changed = true
+	}
 	for i := range s.state.Projects {
 		if s.state.Projects[i].Mode == "" {
 			s.state.Projects[i].Mode = ModeCollect

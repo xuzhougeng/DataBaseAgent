@@ -58,6 +58,7 @@ type Request struct {
 	Mode           string       `json:"mode"`
 	SkillID        string       `json:"skillId"`
 	ExampleID      string       `json:"exampleId"`
+	Lang           string       `json:"lang"`
 	SkillContent   string       `json:"skillContent"`
 	Enabled        *bool        `json:"enabled,omitempty"`
 	Data           string       `json:"data"`
