@@ -47,7 +47,8 @@ func init() {
 		"testMCPServer": {run: func(s *Service, ctx context.Context, r Request) (any, error) {
 			return s.testMCPServer(ctx, r.MCPServerID)
 		}},
-		"search": {collect: true, run: func(s *Service, ctx context.Context, r Request) (any, error) { return s.Search(ctx, r) }},
+		"loginMCPServer": {run: (*Service).loginMCPServer},
+		"search":         {collect: true, run: func(s *Service, ctx context.Context, r Request) (any, error) { return s.Search(ctx, r) }},
 		"probeServer": {run: func(s *Service, ctx context.Context, r Request) (any, error) {
 			return nil, s.Probe(ctx, r.ServerID)
 		}},

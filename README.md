@@ -87,7 +87,7 @@ Everything runs on your machine. DBA writes workspace state to a single JSON fil
 - **Verified archive** — per-file SHA-256, resumable transfer with `.partial` files, 100 GiB per-file ceiling, path confinement on both ends, `run_manifest.json` provenance.
 - **Agent team** — five preset personas with distinct icons, tool scopes and models; a tool-use loop with step budgets, forced final answers and a persisted trace of every call.
 - **Provider-agnostic LLM layer** — one neutral conversation model, three wire protocols, per-agent model selection and direct API key entry.
-- **MCP plugins** — GitHub and Cloudflare presets, custom Streamable HTTP / STDIO servers, secure token storage, connection tests, tool filters, and traced on-demand calls from the main assistant. [Setup guide](docs/mcp.md)
+- **MCP plugins** — GitHub and Cloudflare presets, custom Streamable HTTP / STDIO servers, browser OAuth sign-in or secure token storage, connection tests, tool filters, and traced on-demand calls from the main assistant. [Setup guide](docs/mcp.md)
 - **Local & portable** — single binary, embedded assets, no database server, works offline except for discovery and model calls.
 
 ## Agents

@@ -22,14 +22,22 @@ func (s *Store) saveModelKey(key string) (string, error) {
 		return "", errors.New("API Key 必须为单行且不超过 2048 字节")
 	}
 	ref := id("key")
-	account := s.modelKeyAccount(ref)
-	if err := keyring.Set(modelKeyService, account, key); err == nil {
-		// The macOS keyring command can exit successfully even if its write failed.
-		if saved, err := keyring.Get(modelKeyService, account); err == nil && saved == key {
-			return ref, nil
-		}
+	if err := s.saveSecret(ref, key); err != nil {
+		return ref, errors.New("无法保存 API Key，请确认系统凭据库可用且已解锁")
 	}
-	return ref, errors.New("无法保存 API Key，请确认系统凭据库可用且已解锁")
+	return ref, nil
+}
+
+func (s *Store) saveSecret(ref, value string) error {
+	account := s.modelKeyAccount(ref)
+	if err := keyring.Set(modelKeyService, account, value); err != nil {
+		return err
+	}
+	// The macOS keyring command can exit successfully even if its write failed.
+	if saved, err := keyring.Get(modelKeyService, account); err != nil || saved != value {
+		return errors.New("credential store readback mismatch")
+	}
+	return nil
 }
 
 func (s *Store) deleteModelKey(ref string) {

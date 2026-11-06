@@ -32,7 +32,8 @@ type MCPServer struct {
 	EnvVars           []string `json:"envVars,omitempty"`
 	Enabled           bool     `json:"enabled"`
 	BearerTokenEnv    string   `json:"bearerTokenEnv,omitempty"`
-	TokenRef          string   `json:"tokenRef,omitempty"`
+	OAuthClientID     string   `json:"oauthClientId,omitempty"` // only for servers without dynamic client registration
+	TokenRef          string   `json:"tokenRef,omitempty"`      // "key_…" bearer token or "oauth_…" browser sign-in session
 	StartupTimeoutSec int      `json:"startupTimeoutSec"`
 	ToolTimeoutSec    int      `json:"toolTimeoutSec"`
 	EnabledTools      []string `json:"enabledTools,omitempty"`
@@ -50,7 +51,10 @@ var mcpEnvName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func validateMCPServer(v *MCPServer) error {
 	v.Name, v.URL, v.Command = strings.TrimSpace(v.Name), strings.TrimSpace(v.URL), strings.TrimSpace(v.Command)
-	v.BearerTokenEnv = strings.TrimSpace(v.BearerTokenEnv)
+	v.BearerTokenEnv, v.OAuthClientID = strings.TrimSpace(v.BearerTokenEnv), strings.TrimSpace(v.OAuthClientID)
+	if len(v.OAuthClientID) > 256 || strings.ContainsAny(v.OAuthClientID, " \r\n\x00") {
+		return errors.New("OAuth Client ID 无效")
+	}
 	if v.Name == "" || len(v.Name) > 120 {
 		return errors.New("请填写不超过 120 字节的 MCP 名称")
 	}
@@ -96,7 +100,7 @@ func validateMCPServer(v *MCPServer) error {
 				return errors.New("MCP 环境变量列表仅接受变量名，不接受密钥明文")
 			}
 		}
-		v.URL, v.BearerTokenEnv = "", ""
+		v.URL, v.BearerTokenEnv, v.OAuthClientID = "", "", ""
 	default:
 		return errors.New("MCP 传输方式需为 http 或 stdio")
 	}
@@ -175,7 +179,7 @@ func (s *Service) manageMCPServer(action string, r Request) (any, error) {
 			previous := st.Settings.MCPServers[index]
 			if r.APIKey == nil && v.Transport == "http" {
 				if previous.URL != v.URL && oldRef != "" {
-					return errors.New("修改 MCP 地址时请重新填写或移除 Token")
+					return errors.New("修改 MCP 地址前请先移除已保存的 Token 或登录")
 				}
 				v.TokenRef = oldRef
 			}
@@ -225,6 +229,13 @@ func mcpStatus(v MCPServer) string {
 }
 
 func (s *Store) mcpToken(v MCPServer) (string, error) {
+	if mcpOAuth(v) {
+		session, err := s.loadMCPOAuth(v.TokenRef)
+		if err != nil {
+			return "", err
+		}
+		return session.Token.AccessToken, nil
+	}
 	if v.TokenRef != "" {
 		key, err := keyring.Get(modelKeyService, s.modelKeyAccount(v.TokenRef))
 		if err != nil || key == "" {
@@ -352,6 +363,9 @@ func (s *Service) connectMCP(ctx context.Context, v MCPServer) (*mcpConnection, 
 	if err := validateMCPServer(&v); err != nil {
 		return nil, err
 	}
+	if v.Transport == "http" && mcpOAuth(v) {
+		return s.connectMCPOAuth(ctx, v, "", "http://127.0.0.1/callback", nil)
+	}
 	c := &mcpConnection{config: v}
 	var transport mcp.Transport
 	switch v.Transport {
@@ -388,6 +402,11 @@ func (s *Service) connectMCP(ctx context.Context, v MCPServer) (*mcpConnection, 
 		}
 		transport = &mcp.CommandTransport{Command: cmd, TerminateDuration: time.Second}
 	}
+	return s.startMCP(ctx, c, transport)
+}
+
+func (s *Service) startMCP(ctx context.Context, c *mcpConnection, transport mcp.Transport) (*mcpConnection, error) {
+	v := c.config
 	startup, cancel := context.WithTimeout(ctx, time.Duration(v.StartupTimeoutSec)*time.Second)
 	defer cancel()
 	client := mcp.NewClient(&mcp.Implementation{Name: "DataBaseAgent", Version: "0.2.0"}, &mcp.ClientOptions{Capabilities: &mcp.ClientCapabilities{}, MultiRoundTrip: &mcp.MultiRoundTripOptions{Disabled: true}})

@@ -92,7 +92,7 @@ SKILL 可按任务匹配或通过 `$skill-name` 按需读取。生成结果保�
 
 在偏好设置页添加模型时，选择协议并直接填写 API 基础地址、模型 ID 和 API Key。无需认证的服务可将密钥留空。API Key 保存在系统凭据库，已有模型仍可读取原先配置的环境变量。支持 OpenAI Chat Completions 兼容协议（涵盖 DeepSeek、Qwen、Ollama、vLLM 等）、Anthropic Messages 和 Google Gemini。每个 Agent 可选择不同模型，未选择时使用列表中的第一个。[模型配置指南](docs/models.md)
 
-偏好设置中的 **MCP 插件** 默认带有 GitHub 和 Cloudflare。填写 GitHub PAT / Cloudflare API Token 后保存并测试连接，主 Agent 即可按需发现和调用工具，调用过程保留在对话记录中。也可添加 Streamable HTTP 或本地 STDIO 服务，设置超时、工具允许列表与禁用列表。Token 保存在系统凭据库，也可从启动环境变量读取；当前不含浏览器 OAuth 登录。[MCP 配置指南](docs/mcp.md)
+偏好设置中的 **MCP 插件** 默认带有 GitHub 和 Cloudflare。保存后点击「浏览器登录」在浏览器中授权（Cloudflare 开箱即用，GitHub 需自建 OAuth App），或填写 GitHub PAT / Cloudflare API Token，主 Agent 即可按需发现和调用工具，调用过程保留在对话记录中。也可添加 Streamable HTTP 或本地 STDIO 服务，设置超时、工具允许列表与禁用列表。登录信息与 Token 都保存在系统凭据库，也可从启动环境变量读取。[MCP 配置指南](docs/mcp.md)
 
 检索、模型和 MCP HTTP 请求遵循启动进程的 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量。GitHub 操作及构建脚本使用 `http://127.0.0.1:7897` 代理。SSH 采用本机密钥或 SSH Agent，强制校验已知主机，不支持交互式密码输入。
 

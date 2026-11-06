@@ -161,12 +161,17 @@ func (s *Service) stateResponse(ifNoneMatch string) (body []byte, tag string) {
 			m, e := modelFor(st, a)
 			ready[a.ID] = e == nil && modelReady(m)
 		}
-		mcpStates, mcpKeySaved := map[string]string{}, map[string]bool{}
+		mcpStates, mcpAuth := map[string]string{}, map[string]string{}
 		for _, v := range st.Settings.MCPServers {
 			mcpStates[v.ID] = mcpStatus(v)
-			mcpKeySaved[v.ID] = v.TokenRef != ""
+			switch {
+			case mcpOAuth(v):
+				mcpAuth[v.ID] = "oauth"
+			case v.TokenRef != "":
+				mcpAuth[v.ID] = "token"
+			}
 		}
-		live["envSet"], live["keySaved"], live["ready"], live["mcpStates"], live["mcpKeySaved"] = envSet, keySaved, ready, mcpStates, mcpKeySaved
+		live["envSet"], live["keySaved"], live["ready"], live["mcpStates"], live["mcpAuth"] = envSet, keySaved, ready, mcpStates, mcpAuth
 		meta, _ := json.Marshal(live)
 		digest := sha256.Sum256(meta)
 		tag = `"` + s.Store.epoch + "-" + strconv.FormatUint(s.Store.version, 10) + "-" + hex.EncodeToString(digest[:8]) + `"`

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -407,5 +408,95 @@ func TestMCPBridgeAcrossModelProtocols(t *testing.T) {
 				t.Fatalf("nested arguments changed: %s", reply.Calls[0].Args)
 			}
 		})
+	}
+}
+
+// A mock resource + authorization server: 401 until the dynamically registered
+// client exchanges a PKCE code. openBrowser plays the user and hits the loopback callback.
+func TestMCPOAuthLogin(t *testing.T) {
+	keyring.MockInit()
+	s, _ := fixture(t)
+	var calls, browser, exchanges atomic.Int32
+	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpFixtureServer(&calls) }, &mcp.StreamableHTTPOptions{Stateless: true})
+	var base string
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/.well-known/") || r.URL.Path == "/register" || r.URL.Path == "/token" {
+			w.Header().Set("Content-Type", "application/json")
+		}
+		switch r.URL.Path {
+		case "/.well-known/oauth-protected-resource":
+			_, _ = io.WriteString(w, `{"resource":"`+base+`","authorization_servers":["`+base+`"]}`)
+		case "/.well-known/oauth-authorization-server":
+			_, _ = io.WriteString(w, `{"issuer":"`+base+`","authorization_endpoint":"`+base+`/authorize","token_endpoint":"`+base+`/token","registration_endpoint":"`+base+`/register","code_challenge_methods_supported":["S256"],"scopes_supported":["offline_access"]}`)
+		case "/register":
+			w.WriteHeader(201)
+			_, _ = io.WriteString(w, `{"client_id":"dyn-client","redirect_uris":["http://127.0.0.1/callback"],"token_endpoint_auth_method":"none"}`)
+		case "/token":
+			_ = r.ParseForm()
+			if r.Form.Get("code_verifier") == "" || r.Form.Get("client_id") != "dyn-client" {
+				w.WriteHeader(400)
+				return
+			}
+			n := exchanges.Add(1)
+			_, _ = io.WriteString(w, `{"access_token":"oauth-access-`+string(rune('0'+n))+`","token_type":"bearer","refresh_token":"oauth-refresh","expires_in":3600}`)
+		default:
+			if r.Header.Get("Authorization") != "Bearer oauth-access-1" {
+				w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+base+`/.well-known/oauth-protected-resource"`)
+				w.WriteHeader(401)
+				return
+			}
+			handler.ServeHTTP(w, r)
+		}
+	}))
+	defer remote.Close()
+	base = remote.URL
+	openBrowser = func(link string) error {
+		browser.Add(1)
+		u, err := url.Parse(link)
+		if err != nil || !strings.HasPrefix(link, base+"/authorize") || u.Query().Get("code_challenge") == "" {
+			return errors.New("unexpected authorization URL " + link)
+		}
+		go func() {
+			res, err := http.Get(u.Query().Get("redirect_uri") + "?code=abc&state=" + url.QueryEscape(u.Query().Get("state")))
+			if err == nil {
+				res.Body.Close()
+			}
+		}()
+		return nil
+	}
+	t.Cleanup(func() { openBrowser = openURL })
+	v := saveTestMCP(t, s, MCPServer{Name: "oauth", Transport: "http", URL: remote.URL, Enabled: true})
+	body, _ := json.Marshal(Request{MCPServerID: v.ID})
+	out, err := s.Dispatch(context.Background(), "loginMCPServer", body)
+	if err != nil || !strings.Contains(string(out.(json.RawMessage)), `"signedIn":true`) || browser.Load() != 1 {
+		t.Fatalf("login: %v %s", err, out)
+	}
+	v = s.Store.Snapshot().Settings.MCPServers[len(s.Store.Snapshot().Settings.MCPServers)-1]
+	if !mcpOAuth(v) {
+		t.Fatal("session not referenced")
+	}
+	raw, _ := os.ReadFile(filepath.Join(s.Store.Root(), "workbench.json"))
+	recorder := httptest.NewRecorder()
+	Handler(s, fstest.MapFS{}).ServeHTTP(recorder, httptest.NewRequest("GET", "/api/state", nil))
+	if strings.Contains(string(raw), "oauth-access") || strings.Contains(recorder.Body.String(), "oauth-access") || strings.Contains(recorder.Body.String(), v.TokenRef) {
+		t.Fatal("session exposed")
+	}
+	if !strings.Contains(recorder.Body.String(), `"`+v.ID+`":"oauth"`) {
+		t.Fatal("auth state missing")
+	}
+	// Agent-run connections reuse the saved session without a browser and redact the token.
+	a, _ := agentByID(ptr(s.Store.Snapshot()), "assistant")
+	output, failed := s.runTool(context.Background(), "", *a, toolCall("call_mcp_tool", map[string]any{"serverId": v.ID, "tool": "echo", "arguments": map[string]any{"message": "oauth-access-1"}}))
+	if failed || !strings.Contains(output, "[redacted]") || browser.Load() != 1 {
+		t.Fatalf("reuse: %s", output)
+	}
+	// Removing the credential signs out and deletes the keychain entry.
+	empty := ""
+	action(t, s, "saveMCPServer", Request{MCPServer: v, APIKey: &empty})
+	if _, err := keyring.Get(modelKeyService, s.Store.modelKeyAccount(v.TokenRef)); !errors.Is(err, keyring.ErrNotFound) {
+		t.Fatal("session retained after sign-out")
+	}
+	if mcpStatus(s.Store.Snapshot().Settings.MCPServers[len(s.Store.Snapshot().Settings.MCPServers)-1]) != "configured" {
+		t.Fatal("status")
 	}
 }
