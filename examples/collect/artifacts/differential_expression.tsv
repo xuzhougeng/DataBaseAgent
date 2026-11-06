@@ -1,0 +1,3 @@
+gene_id	log2FoldChange	padj
+ENSG_DEMO_001	1.04	0.0021
+ENSG_DEMO_002	-1.50	0.0008

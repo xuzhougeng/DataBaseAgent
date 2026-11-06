@@ -1,0 +1,4 @@
+id	title	organism	assay	cell	perturbed_gene	design_suggestion	confidence	reason	summary	samples	demo
+DEMO-0142	Transcriptomic profiling of TP53 loss in human epithelial cells	Homo sapiens	CRISPR knockout	A549	TP53	建议纳入	高	包含明确的单基因扰动与匹配对照，提供原始 RNA-seq 数据。	演示摘要：对 TP53 敲除细胞及非靶向对照进行三次生物学重复的 RNA-seq 测序。	6 个样本	设计稿示例
+DEMO-0198	Context-dependent transcriptional responses to MYC silencing	Homo sapiens	siRNA knockdown	多细胞系	MYC	需要确认	中	检测到基因敲低实验，但对照样本的分组信息不完整。	演示摘要：对多个细胞系开展 MYC 沉默实验，数据附件未明确全部 control 与 treatment 的配对关系。	12 个样本	设计稿示例
+DEMO-0236	Perturbation of chromatin regulators reshapes cell identity	Homo sapiens	CRISPR screen	K562	多基因	建议排除	高	筛选数据为细胞存活率读出，不符合转录组数据要求。	演示摘要：通过 pooled CRISPR screen 定量测量细胞增殖与存活，不包含 RNA-seq 数据。	未匹配 RNA-seq	设计稿示例

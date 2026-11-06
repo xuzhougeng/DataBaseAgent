@@ -1,0 +1,16 @@
+{
+  "demo": true,
+  "note": "DBA 设计稿示例，不包含真实分析数据。Design-prototype data contract for review card DEMO-0142. Empty strings and the empty list are values that card does not supply. DEMO-0142 is a prototype label. This file has no repository accession and no checksum.",
+  "data_contract": {
+    "dataset_id": "DEMO-0142",
+    "source_accession": "",
+    "organism": "Homo sapiens",
+    "perturbed_gene": "TP53",
+    "perturbation": "CRISPR knockout",
+    "sample_groups": "",
+    "pipeline_version": "",
+    "output_files": [],
+    "review_decision": "建议纳入",
+    "run_provenance": "设计稿复核记录。置信度：高。细胞：A549。样本说明：6 个样本。理由：包含明确的单基因扰动与匹配对照，提供原始 RNA-seq 数据。"
+  }
+}
