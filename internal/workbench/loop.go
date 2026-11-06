@@ -66,6 +66,9 @@ func (s *Service) Tick(ctx context.Context) error {
 	if e := ctx.Err(); e != nil {
 		return e
 	}
+	if e := s.ctx.Err(); e != nil {
+		return e // stopped: start no operation Stop would not wait for
+	}
 	var started []Job
 	e := s.Store.Update(func(st *State) error {
 		st.LastTick = now()
@@ -129,6 +132,7 @@ func (s *Service) Tick(ctx context.Context) error {
 		}
 		return e
 	}
+	s.opWG.Add(len(started))
 	for _, j := range started {
 		go s.operate(j)
 	}
@@ -136,6 +140,7 @@ func (s *Service) Tick(ctx context.Context) error {
 }
 
 func (s *Service) operate(j Job) {
+	defer s.opWG.Done()
 	defer s.end(j.ID)
 	timeout := 45 * time.Second
 	if j.Status == "syncing" {

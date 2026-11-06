@@ -28,6 +28,7 @@ type Service struct {
 	chatErrors   map[string]string
 	chatWG       sync.WaitGroup
 	inFlight     map[string]bool
+	opWG         sync.WaitGroup // operate goroutines started by Tick
 	approvals    map[string]*Approval
 	autoApprove  bool // tests only: the desktop app always asks the user
 	ctx          context.Context
@@ -43,6 +44,9 @@ func (s *Service) Stop() {
 	s.agentMu.Lock() // synchronize with the last possible worker registration
 	s.agentMu.Unlock()
 	s.chatWG.Wait()
+	s.tickMu.Lock() // Tick registers operations while holding tickMu
+	s.tickMu.Unlock()
+	s.opWG.Wait() // in-flight operations may still persist their outcome
 	s.agentMu.Lock()
 	for mid := range s.chatWaiters {
 		s.finishChatWaiterLocked(mid, context.Canceled)
