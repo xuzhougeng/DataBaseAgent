@@ -53,6 +53,7 @@ func (s *Service) Stop() {
 type Request struct {
 	Mode           string       `json:"mode"`
 	SkillID        string       `json:"skillId"`
+	ExampleID      string       `json:"exampleId"`
 	SkillContent   string       `json:"skillContent"`
 	Enabled        *bool        `json:"enabled,omitempty"`
 	Data           string       `json:"data"`

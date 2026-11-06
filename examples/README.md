@@ -6,6 +6,12 @@ These files are the sample records from the interactive prototype in [design/DBA
 
 The GEO reproduction, with real accessions and checksums, stays in [docs/manuscript/gpsadb-case/](../docs/manuscript/gpsadb-case/README.md).
 
+## In the app
+
+Every build embeds these files, so installers ship them too. Open **Examples** in the sidebar, or **Explore examples** on **All projects**. Each example page previews the result without changing the workspace: the generated website for the two static templates, or topic, candidates, sample groups, outputs and data contract for collect mode. Each file can be downloaded. **Create example project** adds one project with the data loaded (the website built, or the candidates imported as pending). Opening the same example later goes back to that project.
+
+[catalog.json](catalog.json) lists what the page shows. When you add an example, list its files there and add English strings for its gallery text to `frontend/i18n.js`. `node scripts/check-i18n.js` checks them.
+
 ## Files
 
 | File | Use in DBA |
