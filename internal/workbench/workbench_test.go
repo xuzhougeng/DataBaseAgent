@@ -30,6 +30,7 @@ func fixture(t *testing.T) (*Service, string) {
 		t.Fatal(e)
 	}
 	s := NewService(store)
+	s.autoApprove = true
 	t.Cleanup(s.Stop)
 	action(t, s, "createProject", Request{Name: "数据库一", Description: "研究目标"})
 	pid := s.Store.Snapshot().Projects[0].ID
@@ -195,6 +196,7 @@ func TestRestartResumesObservationWithoutResubmission(t *testing.T) {
 		t.Fatal(e)
 	}
 	resumed := NewService(store)
+	resumed.autoApprove = true
 	t.Cleanup(resumed.Stop)
 	resumed.Runner = f
 	f.observation = Observation{Status: "succeeded", Log: "finished while app was closed"}

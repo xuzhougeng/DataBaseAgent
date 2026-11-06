@@ -202,9 +202,23 @@ const EN={
 '创建远程处理任务':'Create remote jobs','流程：{n} · v{v}\n服务器：{s}\n资源：每任务 {c} CPU，并发 {k}\n人工纳入：{a} 条':'Pipeline: {n} · v{v}\nServer: {s}\nResources: {c} CPU per job, concurrency {k}\nIncluded: {a}','只提交已人工纳入、且尚未运行此流程版本的数据。锁定的命令将在所选服务器上真实运行，巡检按配额自动调度。':'Only submits included data not yet run with this version. Locked commands run for real on the chosen server, scheduled by quota.','确认加入队列':'Queue jobs','任务已加入队列，等待 Agent 调度':'Jobs queued for the agent to schedule',
 '任务详情':'Job details','尚未提交':'Not submitted','等待远端运行日志…':'Waiting for remote logs…','需要你的判断':'Needs your decision','已完成的处理说明（必填）':'What you did (required)','补充样本分组（可选，每行：样本编号, 分组）':'Extra sample groups (optional, one per line: sample, group)','已处理，恢复任务':'Resolved, resume job','处理记录已保存，任务将在巡检后继续':'Resolution saved; the job resumes after the next check',
 '添加远程服务器':'Add remote server','服务器名称':'Server name','主机地址':'Host','SSH 用户':'SSH user','SSH 端口':'SSH port','专用工作目录（Linux 绝对路径）':'Work directory (absolute Linux path)','本机 SSH 私钥路径（留空使用 SSH Agent / 默认密钥）':'Local SSH private key path (blank uses SSH agent / default key)','可供 DBA 调度的 CPU 数':'CPUs available to DBA','最多并行任务数':'Max parallel jobs','私钥保留在本机。应用不保存密码，不自动接受未知主机指纹。':'Private keys stay on this machine. No passwords are stored and unknown host fingerprints are never auto-accepted.','保存配置':'Save','服务器配置已保存':'Server saved','正在检查 SSH 和远程运行环境…':'Checking SSH and remote environment…','服务器检查通过':'Server check passed','尚未检查连接。':'Connection not checked yet.','巡检设置已保存':'Monitoring settings saved',
-'编辑模型':'Edit model','名称（便于在 Agent 中选择）':'Name (shown when choosing for agents)','API 基础地址（服务前缀）':'API base URL','API Key 保存在系统凭据库。无需认证的服务可留空。':'API keys are saved in the system credential store. Leave blank for services without authentication.','留空保留现有密钥设置，填写新密钥即可替换。':'Leave blank to keep the current key settings, or enter a new key to replace them.','移除当前密钥设置':'Remove current key settings','保存模型':'Save model','模型配置已保存':'Model saved','删除模型':'Delete model','删除“{n}”后，使用它的 Agent 回退到列表中的第一个模型。':'After deleting “{n}”, agents using it fall back to the first model.','确认删除':'Delete','模型已删除':'Model deleted',
+'编辑模型':'Edit model','名称（便于在 Agent 中选择）':'Name (shown when choosing for agents)','API 基础地址（服务前缀）':'API base URL','API Key 保存在系统凭据库。无需认证的服务可留空。':'API keys are saved in the system credential store. Leave blank for services without authentication.','留空保留现有密钥设置，填写新密钥即可替换。更换服务地址或协议时需要重新填写。':'Leave blank to keep the current key setting, or enter a new key to replace it. Changing the base URL or protocol requires entering the key again.','移除当前密钥设置':'Remove current key settings','保存模型':'Save model','模型配置已保存':'Model saved','删除模型':'Delete model','删除“{n}”后，使用它的 Agent 回退到列表中的第一个模型。':'After deleting “{n}”, agents using it fall back to the first model.','确认删除':'Delete','模型已删除':'Model deleted',
 'Agent 配置已保存':'Agent saved','已恢复默认指令':'Default instructions restored','巡检已恢复':'Monitoring resumed','自动巡检已暂停':'Auto monitoring paused','已发起一次巡检':'Check started',
 '请诊断任务 {a}（id {i}）：读取其日志与服务器状态，判断失败原因并给出具体修复步骤。':'Diagnose job {a} (id {i}): read its logs and server status, identify the cause of failure and give concrete fix steps.','最多预览前 64 KiB。':'Previews the first 64 KiB at most.','产物清单已导出到 {p}':'Manifest exported to {p}',
+"{a} 请求确认":"{a} needs your approval",
+"查看调用参数":"Show call arguments",
+"允许执行":"Allow",
+"拒绝":"Deny",
+"已允许执行":"Allowed",
+"已拒绝":"Denied",
+"创建任务后，调度器会在远端服务器上执行已锁定流程的命令。":"Creating jobs makes the scheduler run the locked pipeline's commands on the remote server.",
+"恢复任务会继续或重新执行远端处理。":"Resuming the job continues or re-runs remote processing.",
+"注册新的远程执行服务器，之后的流程命令可能在该主机上运行。":"Registers a new remote server; later pipeline commands may run on that host.",
+"修改模型配置会改变对话内容发往的服务。":"Changing a model profile changes which service receives conversation content.",
+"删除模型配置，使用它的 Agent 会改用其他模型。":"Deletes the model profile; agents using it switch to another model.",
+"修改 Agent 的指令、模型或步数，会持续影响之后的对话。":"Changes an agent's instructions, model or step budget for all later conversations.",
+"恢复 Agent 的默认指令和步数。":"Restores the agent's default instructions and step budget.",
+"调用外部插件工具，写入、部署或删除可能立即生效。":"Calls an external plugin tool; writes, deployments or deletions may take effect immediately."
 };
 const t=(s,v={})=>(lang==='en'&&EN[s]||s).replace(/\{(\w+)\}/g,(m,k)=>k in v?v[k]:m);
 function setLang(l){lang=l;try{localStorage.setItem('dba-lang',l)}catch{}document.documentElement.lang=l==='en'?'en':'zh-CN';document.title=t('DBA · 数据库构建工作台');render();}

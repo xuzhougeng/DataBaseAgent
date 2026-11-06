@@ -6,7 +6,7 @@ const I=n=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[n]||pat
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 let db={projects:[],servers:[],jobs:[],artifacts:[],events:[],settings:{}};
-let meta={},lastState='',loading=false;
+let meta={},lastState='',loading=false,stateTag='',lastReply=null,lastSignature='';
 const ui={page:'projects',projectId:null,filter:'pending',candidateId:'',jobFilter:'all',jobQuery:'',modelId:'',busy:new Set(),dirty:{},chatDrafts:{},conversationSelections:{},chatReadCounts:{},chatOutbox:{},chatSending:new Set(),chatScrolls:{},chatDetails:{},historyQuery:'',historyArchived:false,asideHidden:(()=>{try{return localStorage.getItem('dba-aside')==='hidden'}catch{}})()};
 const protocolNames={openai:'OpenAI Chat Completions 兼容',anthropic:'Anthropic Messages',gemini:'Google Gemini'};
 const protocolHints={openai:'例如 https://api.openai.com/v1；DeepSeek、Qwen、Ollama、vLLM、OpenRouter 等兼容服务同理，应用追加 /chat/completions',anthropic:'例如 https://api.anthropic.com/v1，应用追加 /messages；模型 ID 如 claude-opus-5-5',gemini:'例如 https://generativelanguage.googleapis.com/v1beta，应用追加 /models/{模型}:generateContent'};
@@ -43,11 +43,20 @@ async function request(path,body){
   if(!res.ok){const error=new Error(data.error||t('请求失败 {s}',{s:res.status}));error.status=res.status;throw error;}
   return data;
 }
+// Polls send the last ETag; an unchanged workspace answers 304 and the previous reply is reused.
+async function fetchState(){
+  const res=await fetch('/api/state',lastReply&&stateTag?{headers:{'If-None-Match':stateTag}}:{});
+  if(res.status===304&&lastReply)return lastReply;
+  const data=await res.json();
+  if(!res.ok){const error=new Error(data.error||t('请求失败 {s}',{s:res.status}));error.status=res.status;throw error;}
+  stateTag=res.headers.get('ETag')||'';lastReply=data;lastSignature=JSON.stringify(data);
+  return data;
+}
 async function refresh(force=false){
   if(loading){await loading;if(force)return refresh(true);return;}
-  loading=request('state');
+  loading=fetchState();
   try{
-    const reply=await loading,signature=JSON.stringify(reply),wasDisconnected=ui.connectionError;
+    const reply=await loading,signature=lastSignature,wasDisconnected=ui.connectionError;
     db=reply.state;meta=reply;ui.connectionError=false;
     if(ui.projectId===null)ui.projectId=db.projects[0]?.id||'';
     if(ui.projectId&&!current())ui.projectId='';
@@ -118,7 +127,7 @@ function render(){
   const scrolls=view===ui.view?['.sidebar','.candidate-list','.aside-feed','.history-list',...(form===ui.form?['main']:[])].map(s=>[s,document.querySelector(s)?.scrollTop]):[];
   if(form!==ui.form)ui.dirty={};
   Object.assign(ui,{view,form,chatKey});
-  document.getElementById('app').innerHTML=`<div class="app ${ui.asideHidden?'aside-hidden':''}">${sidebar(p)}<main class="${ui.page==='agent'?'assistant-main':''}">${body}</main>${aside(p)}${ui.page==='agent'?'':`<button class="assistant-fab" onclick="go('agent')" aria-label="${t('打开 AI 助手')}" title="${t('打开 AI 助手')}">${I('agent')}<span>${t('AI 助手')}</span>${helpJobs().length?`<span class="count warn">${helpJobs().length}</span>`:''}</button>`}</div>`;
+  document.getElementById('app').innerHTML=`<div class="app ${ui.asideHidden?'aside-hidden':''}">${sidebar(p)}<main class="${ui.page==='agent'?'assistant-main':''}">${body}</main>${aside(p)}${ui.page==='agent'?'':`<button class="assistant-fab" onclick="go('agent')" aria-label="${t('打开 AI 助手')}" title="${t('打开 AI 助手')}">${I('agent')}<span>${t('AI 助手')}</span>${helpJobs().length+(meta.approvals||[]).length?`<span class="count warn">${helpJobs().length+(meta.approvals||[]).length}</span>`:''}</button>`}</div>`;
   for(const [id,v] of Object.entries(ui.dirty)){const el=document.getElementById(id);if(el)el.value=v;}
   document.querySelectorAll('[data-detail-id]').forEach(el=>{if(el.dataset.detailId in ui.chatDetails)el.open=ui.chatDetails[el.dataset.detailId];});
   for(const [s,top] of scrolls){const el=document.querySelector(s);if(el&&top)el.scrollTop=top;}
@@ -150,11 +159,12 @@ function sidebar(p){
 
 function toggleAside(){ui.asideHidden=!ui.asideHidden;try{localStorage.setItem('dba-aside',ui.asideHidden?'hidden':'')}catch{}render();}
 function aside(p){
-  const events=db.events.filter(e=>!p||!e.projectId||e.projectId===p.id).slice(-20).reverse(),helps=helpJobs().filter(j=>!p||j.projectId===p.id),paused=db.settings.paused,runs=(meta.agentRuns||[]).filter(r=>!p||r.projectId===p.id);
-  if(ui.asideHidden)return `<aside class="aside rail"><button class="icon-button" onclick="toggleAside()" aria-label="${t('展开工作进展')}" title="${t('展开工作进展')}">${I('activity')}</button>${helps.length?`<span class="count warn">${helps.length}</span>`:''}</aside>`;
+  const events=db.events.filter(e=>!p||!e.projectId||e.projectId===p.id).slice(-20).reverse(),helps=helpJobs().filter(j=>!p||j.projectId===p.id),paused=db.settings.paused,runs=(meta.agentRuns||[]).filter(r=>!p||r.projectId===p.id),approvals=(meta.approvals||[]).filter(ap=>(!p||!ap.projectId||ap.projectId===p.id)&&!(ui.page==='agent'&&ap.conversationId&&ap.conversationId===currentConversation()?.id));
+  if(ui.asideHidden)return `<aside class="aside rail"><button class="icon-button" onclick="toggleAside()" aria-label="${t('展开工作进展')}" title="${t('展开工作进展')}">${I('activity')}</button>${helps.length+approvals.length?`<span class="count warn">${helps.length+approvals.length}</span>`:''}</aside>`;
   return `<aside class="aside" aria-label="${t('AI 工作进展')}"><div class="aside-head">${I('activity')}<div><strong>${t('工作进展')}</strong><small>${paused?t('巡检已暂停，远端进程继续运行'):t('每 {n} 秒巡检 · {m} 个活跃任务',{n:db.settings.intervalSeconds,m:db.jobs.filter(active).length})}</small></div><button class="icon-button" onclick="toggleAside()" aria-label="${t('收起工作进展')}" title="${t('收起工作进展')}">${I('chevron')}</button></div>
     <div class="progress-controls">${btn(t('立即巡检'),'tick()','small','sync')}${btn(t(paused?'恢复巡检':'暂停巡检'),'toggleAgent()','small',paused?'play':'pause')}</div>
     <div class="aside-feed">${runs.map(r=>`<div class="run-progress" role="status"><strong>${I('agent')}${esc(agents().find(a=>a.id===(r.subagentId||r.agentId))?.name||'Agent')}</strong><p>${r.tool?t('正在执行 {tool}',{tool:esc(r.tool)}):t('正在规划下一步…')}</p><small>${t('第 {n} 步',{n:r.step||1})} · ${date(r.startedAt)}</small></div>`).join('')}
+    ${approvals.map(approvalCard).join('')}
     ${helps.map(j=>`<div class="help-card"><strong>${I('alert')}${t('{a} 需要你的判断',{a:esc(j.accession)})}</strong><p>${esc(j.help||j.error)}</p><div class="decision">${btn(t('查看并处理'),`jobDetail('${j.id}')`,'small')}${btn(t('交给 AI 排查'),`askAgent('operator','${j.id}')`,'small','agent',!meta.ready?.operator)}</div></div>`).join('')}
     <div class="aside-label"><span>${t('最近动态')}</span><span>${t('上次巡检')} ${date(db.lastTick,t('尚未巡检'))}</span></div>${events.length?events.map(e=>`<div class="event ${e.kind==='help'?'warn':e.kind==='error'?'err':''}"><time>${date(e.at)}</time><strong>${esc(e.title)}</strong>${e.detail?`<p>${esc(e.detail)}</p>`:''}${e.jobId?`<button class="text-button" onclick="jobDetail('${e.jobId}')">${t('查看任务')}</button>`:''}</div>`).join(''):`<p class="muted">${t('项目动态会显示在这里。')}</p>`}</div>
     </aside>`;
@@ -291,7 +301,7 @@ function modelModal(mid){
   ui.modelId=m.id||'';
   modal(t(m.id?'编辑模型':'添加模型'),`<form id="model-form" data-model-id="${m.id||''}" onsubmit="event.preventDefault();saveModel()">`+field(t('名称（便于在 Agent 中选择）'),'model-name',m.name||'','input','required')+`<div class="field"><label for="model-protocol">${t('协议')}</label><select id="model-protocol" onchange="document.getElementById('model-hint').textContent=t(protocolHints[this.value])">${Object.entries(protocolNames).map(([k,n])=>`<option value="${k}" ${k===m.protocol?'selected':''}>${t(n)}</option>`).join('')}</select></div>`+field(t('API 基础地址（服务前缀）'),'model-url',m.baseUrl||'','input','type="url" required')+`<p class="muted" id="model-hint">${esc(t(protocolHints[m.protocol]))}</p>`+field(t('模型 ID'),'model-model',m.model||'','input','required')+
     field('API Key','model-key','','input','type="password" autocomplete="new-password" spellcheck="false"')+
-    `<p class="muted">${t(hasKey?'留空保留现有密钥设置，填写新密钥即可替换。':'API Key 保存在系统凭据库。无需认证的服务可留空。')}</p>`+
+    `<p class="muted">${t(hasKey?'留空保留现有密钥设置，填写新密钥即可替换。更换服务地址或协议时需要重新填写。':'API Key 保存在系统凭据库。无需认证的服务可留空。')}</p>`+
     (hasKey?`<label class="muted"><input type="checkbox" id="model-clear-key" onchange="document.getElementById('model-key').disabled=this.checked"> ${t('移除当前密钥设置')}</label>`:'')+'</form>',
     (m.id?btn(t('删除模型'),`deleteModel('${m.id}')`,'','trash'):'')+`<button class="button primary" type="submit" form="model-form">${t('保存模型')}</button>`,'model-modal');
   document.getElementById('model-name').focus();

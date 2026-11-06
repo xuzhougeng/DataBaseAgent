@@ -1,13 +1,37 @@
 package workbench
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 )
+
+// LoopbackOnly wraps the handler of a server listening on a local TCP port.
+// Any web page can reach that port through DNS rebinding (a hostile name that
+// resolves to 127.0.0.1); the browser then sends matching Origin and Host
+// headers, so only the Host name itself shows the request is not local.
+func LoopbackOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		host = strings.Trim(host, "[]")
+		if !strings.EqualFold(host, "localhost") && host != "127.0.0.1" && host != "::1" {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			http.Error(w, `{"error":"仅接受本机地址访问"}`, http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 func Handler(s *Service, assets fs.FS) http.Handler {
 	files := http.FileServer(http.FS(assets))
@@ -50,26 +74,13 @@ func Handler(s *Service, assets fs.FS) http.Handler {
 			}
 			_, _ = w.Write([]byte(html))
 		case r.Method == "GET" && r.URL.Path == "/api/state":
-			state := s.Store.Snapshot()
-			envSet, keySaved, ready := map[string]bool{}, map[string]bool{}, map[string]bool{}
-			for _, m := range state.Settings.Models {
-				envSet[m.ID] = m.APIKeyEnv == "" || os.Getenv(m.APIKeyEnv) != ""
-				keySaved[m.ID] = m.APIKeyRef != ""
+			body, tag := s.stateResponse(r.Header.Get("If-None-Match"))
+			w.Header().Set("ETag", tag)
+			if body == nil {
+				w.WriteHeader(http.StatusNotModified)
+				return
 			}
-			for _, a := range state.Settings.Agents {
-				m, e := modelFor(&state, a)
-				ready[a.ID] = e == nil && modelReady(m)
-			}
-			for i := range state.Settings.Models {
-				state.Settings.Models[i].APIKeyRef = ""
-			}
-			mcpStates, mcpKeySaved := map[string]string{}, map[string]bool{}
-			for i, v := range state.Settings.MCPServers {
-				mcpStates[v.ID] = mcpStatus(v)
-				mcpKeySaved[v.ID] = v.TokenRef != ""
-				state.Settings.MCPServers[i].TokenRef = ""
-			}
-			write(map[string]any{"state": state, "root": s.Store.Root(), "envSet": envSet, "keySaved": keySaved, "ready": ready, "agentRuns": s.AgentRuns(), "chatErrors": s.ChatErrors(), "mcpStates": mcpStates, "mcpKeySaved": mcpKeySaved})
+			_, _ = w.Write(body)
 		case r.Method == "GET" && r.URL.Path == "/api/artifact":
 			text, e := s.PreviewArtifact(r.URL.Query().Get("id"))
 			if e != nil {
@@ -103,4 +114,49 @@ func Handler(s *Service, assets fs.FS) http.Handler {
 			write(map[string]string{"error": "接口不存在"})
 		}
 	})
+}
+
+// stateResponse builds the polling payload under one read lock. The tag combines
+// the store version with a digest of the transient run state, so an unchanged
+// workspace answers a poll with 304 and no serialization. Credential references
+// are blanked on a shallow copy; the live state is never modified.
+// Transient maps are collected first: their locks are taken before the store's elsewhere.
+func (s *Service) stateResponse(ifNoneMatch string) (body []byte, tag string) {
+	live := map[string]any{"root": s.Store.Root(), "agentRuns": s.AgentRuns(), "approvals": s.Approvals(), "chatErrors": s.ChatErrors()}
+	_ = s.Store.Read(func(st *State) error {
+		envSet, keySaved, ready := map[string]bool{}, map[string]bool{}, map[string]bool{}
+		for _, m := range st.Settings.Models {
+			envSet[m.ID] = m.APIKeyEnv == "" || os.Getenv(m.APIKeyEnv) != ""
+			keySaved[m.ID] = m.APIKeyRef != ""
+		}
+		for _, a := range st.Settings.Agents {
+			m, e := modelFor(st, a)
+			ready[a.ID] = e == nil && modelReady(m)
+		}
+		mcpStates, mcpKeySaved := map[string]string{}, map[string]bool{}
+		for _, v := range st.Settings.MCPServers {
+			mcpStates[v.ID] = mcpStatus(v)
+			mcpKeySaved[v.ID] = v.TokenRef != ""
+		}
+		live["envSet"], live["keySaved"], live["ready"], live["mcpStates"], live["mcpKeySaved"] = envSet, keySaved, ready, mcpStates, mcpKeySaved
+		meta, _ := json.Marshal(live)
+		digest := sha256.Sum256(meta)
+		tag = `"` + s.Store.epoch + "-" + strconv.FormatUint(s.Store.version, 10) + "-" + hex.EncodeToString(digest[:8]) + `"`
+		if tag == ifNoneMatch {
+			return nil
+		}
+		view := *st
+		view.Settings.Models = append([]ModelProfile{}, st.Settings.Models...)
+		for i := range view.Settings.Models {
+			view.Settings.Models[i].APIKeyRef = ""
+		}
+		view.Settings.MCPServers = append([]MCPServer{}, st.Settings.MCPServers...)
+		for i := range view.Settings.MCPServers {
+			view.Settings.MCPServers[i].TokenRef = ""
+		}
+		live["state"] = view
+		body, _ = json.Marshal(live)
+		return nil
+	})
+	return body, tag
 }

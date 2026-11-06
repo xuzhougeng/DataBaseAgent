@@ -125,6 +125,19 @@ func mcpServerByID(st *State, sid string) (MCPServer, error) {
 func (s *Service) manageMCPServer(action string, r Request) (any, error) {
 	var newRef, oldRef string
 	var result any
+	// Write a new token to the system keychain before taking the state lock;
+	// the keychain may wait on an unlock prompt.
+	if action == "saveMCPServer" && r.APIKey != nil && strings.TrimSpace(*r.APIKey) != "" {
+		if r.MCPServer.Transport != "http" {
+			return nil, errors.New("STDIO 请使用环境变量传入凭据")
+		}
+		ref, err := s.Store.saveModelKey(strings.TrimSpace(*r.APIKey))
+		if err != nil {
+			s.Store.deleteModelKey(ref)
+			return nil, err
+		}
+		newRef = ref
+	}
 	err := s.Store.Update(func(st *State) error {
 		if action == "deleteMCPServer" {
 			v, err := mcpServerByID(st, r.MCPServerID)
@@ -172,15 +185,7 @@ func (s *Service) manageMCPServer(action string, r Request) (any, error) {
 			}
 			v.ID = id("mcp")
 		}
-		if r.APIKey != nil && strings.TrimSpace(*r.APIKey) != "" {
-			if v.Transport != "http" {
-				return errors.New("STDIO 请使用环境变量传入凭据")
-			}
-			var err error
-			newRef, err = s.Store.saveModelKey(strings.TrimSpace(*r.APIKey))
-			if err != nil {
-				return err
-			}
+		if newRef != "" {
 			v.TokenRef = newRef
 			v.BearerTokenEnv = ""
 		}
@@ -520,12 +525,20 @@ func (s *Service) runMCPTool(ctx context.Context, a Agent, call ToolCall, args m
 		result = map[string]any{"serverId": c.config.ID, "total": len(filtered), "tools": filtered[offset:min(offset+limit, len(filtered))], "instructions": clip(c.session.InitializeResult().Instructions, 4000)}
 	} else {
 		name := argStr(args, "tool")
-		found := false
+		var target *mcp.Tool
 		for _, tool := range available {
-			found = found || tool.Name == name
+			if tool.Name == name {
+				target = tool
+			}
 		}
-		if !found {
+		if target == nil {
 			return fail(errors.New("MCP 工具不存在或未获准使用，请先 list_mcp_tools"))
+		}
+		// The user configured this plugin, so its read-only annotation is trusted; anything else may write.
+		if target.Annotations == nil || !target.Annotations.ReadOnlyHint {
+			if err := s.awaitApproval(ctx, "", a, call.Name, call.Args, "插件 "+c.config.Name+" · 工具 "+name); err != nil {
+				return fail(err)
+			}
 		}
 		input, ok := args["arguments"].(map[string]any)
 		if !ok || input == nil {

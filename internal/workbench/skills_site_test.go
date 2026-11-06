@@ -19,6 +19,7 @@ func skillService(t *testing.T) *Service {
 		t.Fatal(err)
 	}
 	s := NewService(store)
+	s.autoApprove = true
 	t.Cleanup(s.Stop)
 	return s
 }

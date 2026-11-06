@@ -45,6 +45,7 @@ func TestAssistantCompletesWorkflowFromWorkspaceConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := NewService(store)
+	s.autoApprove = true
 	t.Cleanup(s.Stop)
 	s.Runner = &fakeExecutor{observation: Observation{Status: "succeeded", Log: "done"}}
 	action(t, s, "saveModel", Request{Model: ModelProfile{Name: "test", Protocol: "openai", BaseURL: "https://model.example/v1", Model: "test"}})

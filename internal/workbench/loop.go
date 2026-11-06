@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -20,19 +21,25 @@ func (s *Service) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			state := s.Store.Snapshot()
-			last, _ := time.Parse(time.RFC3339, state.LastTick)
-			if !state.Settings.Paused && time.Since(last) >= time.Duration(state.Settings.IntervalSeconds)*time.Second {
+			due := false
+			_ = s.Store.Read(func(st *State) error {
+				last, _ := time.Parse(time.RFC3339, st.LastTick)
+				due = !st.Settings.Paused && time.Since(last) >= time.Duration(st.Settings.IntervalSeconds)*time.Second
+				return nil
+			})
+			if due {
 				_ = s.Tick(ctx)
 			}
 		}
 	}
 }
 
+const maxOperations = 8
+
 func (s *Service) begin(jid string) bool {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
-	if s.inFlight[jid] || len(s.inFlight) >= 8 {
+	if s.inFlight[jid] || len(s.inFlight) >= maxOperations {
 		return false
 	}
 	s.inFlight[jid] = true
@@ -40,6 +47,17 @@ func (s *Service) begin(jid string) bool {
 }
 func (s *Service) end(jid string) { s.opMu.Lock(); delete(s.inFlight, jid); s.opMu.Unlock() }
 
+// cloneJob gives an operation its own copy; Job holds slices shared with the live state.
+func cloneJob(j Job) Job {
+	b, _ := json.Marshal(j)
+	var out Job
+	_ = json.Unmarshal(b, &out)
+	return out
+}
+
+// Tick runs one scheduler pass as a single transaction: due retries are requeued,
+// in-flight work is picked up for observation, then queued jobs are reserved
+// within server and project budgets. Only then do the operations start.
 func (s *Service) Tick(ctx context.Context) error {
 	if !s.tickMu.TryLock() {
 		return nil
@@ -48,65 +66,51 @@ func (s *Service) Tick(ctx context.Context) error {
 	if e := ctx.Err(); e != nil {
 		return e
 	}
-	if e := s.Store.Update(func(st *State) error {
+	var started []Job
+	e := s.Store.Update(func(st *State) error {
 		st.LastTick = now()
+		t := time.Now()
+		usedCPU, usedJobs, projectJobs := map[string]int{}, map[string]int{}, map[string]int{}
 		for i := range st.Jobs {
 			j := &st.Jobs[i]
 			if j.Status == "retry_wait" {
 				at, _ := time.Parse(time.RFC3339, j.RetryAt)
-				if !time.Now().Before(at) {
+				if !t.Before(at) {
 					j.Status = "queued"
 				}
 			}
-		}
-		return nil
-	}); e != nil {
-		return e
-	}
-	state := s.Store.Snapshot()
-	// Observe existing work before allocating additional server resources.
-	for _, j := range state.Jobs {
-		if j.Status != "starting" && j.Status != "running" && j.Status != "syncing" {
-			continue
-		}
-		at, _ := time.Parse(time.RFC3339, j.RetryAt)
-		if time.Now().Before(at) || !s.begin(j.ID) {
-			continue
-		}
-		go s.operate(j)
-	}
-	for _, j := range state.Jobs {
-		if j.Status != "queued" || !s.begin(j.ID) {
-			continue
-		}
-		reserved := false
-		e := s.Store.Update(func(st *State) error {
-			cur, e := jobByID(st, j.ID)
-			if e != nil {
-				return e
+			if j.Status == "starting" || j.Status == "running" || j.Status == "needs_help" && (j.ResumeStatus == "starting" || j.ResumeStatus == "running") {
+				usedCPU[j.Server.ID] += j.Pipeline.CPUs
+				usedJobs[j.Server.ID]++
+				projectJobs[j.ProjectID]++
 			}
+		}
+		// Observe existing work before allocating additional server resources.
+		for _, j := range st.Jobs {
+			if j.Status != "starting" && j.Status != "running" && j.Status != "syncing" {
+				continue
+			}
+			at, _ := time.Parse(time.RFC3339, j.RetryAt)
+			if t.Before(at) || !s.begin(j.ID) {
+				continue
+			}
+			started = append(started, cloneJob(j))
+		}
+		for i := range st.Jobs {
+			cur := &st.Jobs[i]
 			if cur.Status != "queued" {
-				return nil
+				continue
 			}
 			server, e := serverByID(st, cur.Server.ID)
-			if e != nil {
-				return e
+			if e != nil || usedJobs[server.ID] >= server.MaxJobs || usedCPU[server.ID]+cur.Pipeline.CPUs > server.CPUQuota || projectJobs[cur.ProjectID] >= cur.Pipeline.Concurrency {
+				continue
 			}
-			usedCPU, usedJobs, projectJobs := 0, 0, 0
-			for _, other := range st.Jobs {
-				if other.Status == "starting" || other.Status == "running" || other.Status == "needs_help" && (other.ResumeStatus == "starting" || other.ResumeStatus == "running") {
-					if other.Server.ID == server.ID {
-						usedCPU += other.Pipeline.CPUs
-						usedJobs++
-					}
-					if other.ProjectID == cur.ProjectID {
-						projectJobs++
-					}
-				}
+			if !s.begin(cur.ID) {
+				continue
 			}
-			if usedJobs >= server.MaxJobs || usedCPU+cur.Pipeline.CPUs > server.CPUQuota || projectJobs >= cur.Pipeline.Concurrency {
-				return nil
-			}
+			usedCPU[server.ID] += cur.Pipeline.CPUs
+			usedJobs[server.ID]++
+			projectJobs[cur.ProjectID]++
 			cur.Attempt++
 			cur.Failures = 0
 			cur.Status = "starting"
@@ -114,18 +118,18 @@ func (s *Service) Tick(ctx context.Context) error {
 			cur.RetryAt = ""
 			cur.UpdatedAt = now()
 			cur.RemoteDir = path.Join(cur.Server.WorkDir, cur.ProjectID, cur.ID, fmt.Sprintf("attempt-%d", cur.Attempt))
-			j = *cur
-			reserved = true
-			event(st, j.ProjectID, j.ID, "dispatch", "任务开始提交", fmt.Sprintf("%s · 第 %d 次 · 流程 v%d", j.Accession, j.Attempt, j.Pipeline.Version))
-			return nil
-		})
-		if e != nil || !reserved {
-			s.end(j.ID)
-			if e != nil {
-				return e
-			}
-			continue
+			event(st, cur.ProjectID, cur.ID, "dispatch", "任务开始提交", fmt.Sprintf("%s · 第 %d 次 · 流程 v%d", cur.Accession, cur.Attempt, cur.Pipeline.Version))
+			started = append(started, cloneJob(*cur))
 		}
+		return nil
+	})
+	if e != nil {
+		for _, j := range started {
+			s.end(j.ID)
+		}
+		return e
+	}
+	for _, j := range started {
 		go s.operate(j)
 	}
 	return nil
@@ -249,12 +253,21 @@ func (s *Service) operationError(j Job, err error) {
 		if e != nil {
 			return e
 		}
+		var progress *TransferProgress
+		progressing := j.Status == "syncing" && errors.As(err, &progress) && progress.Bytes > 0
+		if progressing {
+			cur.Failures = 0 // a transfer that keeps advancing is not stuck
+		}
 		cur.Failures++
 		cur.Error = err.Error()
 		cur.UpdatedAt = now()
-		if cur.Failures > st.Settings.MaxRetries {
+		switch {
+		case progressing:
+			cur.RetryAt = retryTime(cur.Failures)
+			event(st, j.ProjectID, j.ID, "repair", "传输中断，已保留进度，等待续传", fmt.Sprintf("%s · 本次新增 %d 字节", err.Error(), progress.Bytes))
+		case cur.Failures > st.Settings.MaxRetries:
 			requestHelp(st, cur, "自动恢复次数已用尽，请检查连接、日志或输出文件。", j.Status)
-		} else {
+		default:
 			cur.RetryAt = retryTime(cur.Failures)
 			event(st, j.ProjectID, j.ID, "repair", "保留现场，等待恢复", fmt.Sprintf("%s · %d/%d", err.Error(), cur.Failures, st.Settings.MaxRetries))
 		}

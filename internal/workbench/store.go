@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -13,10 +14,17 @@ import (
 )
 
 type Store struct {
-	mu    sync.RWMutex
-	state State
-	root  string
+	mu      sync.RWMutex
+	state   State
+	root    string
+	version uint64 // incremented after every committed write; lets readers skip unchanged state
+	epoch   string // random per process, so versions from an earlier run never match
 }
+
+const (
+	maxEvents      = 2000
+	maxAgentEvents = 500 // agent activity must not push review, job and help events out of the audit trail
+)
 
 func id(prefix string) string {
 	var b [10]byte
@@ -34,7 +42,7 @@ func Open(root string) (*Store, error) {
 	if err = os.MkdirAll(abs, 0700); err != nil {
 		return nil, err
 	}
-	s := &Store{root: abs, state: State{Schema: SchemaVersion, Projects: []Project{}, Servers: []Server{}, Jobs: []Job{}, Artifacts: []Artifact{}, Events: []Event{}, Settings: Settings{IntervalSeconds: 60, MaxRetries: 3, Models: []ModelProfile{}}}}
+	s := &Store{root: abs, epoch: id("epoch"), state: State{Schema: SchemaVersion, Projects: []Project{}, Servers: []Server{}, Jobs: []Job{}, Artifacts: []Artifact{}, Events: []Event{}, Settings: Settings{IntervalSeconds: 60, MaxRetries: 3, Models: []ModelProfile{}}}}
 	b, err := os.ReadFile(filepath.Join(abs, "workbench.json"))
 	changed := false
 	if err == nil {
@@ -95,13 +103,19 @@ func Open(root string) (*Store, error) {
 	}
 	changed = recoverConversations(&s.state) || changed
 	if changed {
-		if err := s.Update(func(*State) error { return nil }); err != nil {
+		b, err := json.Marshal(s.state)
+		if err == nil {
+			err = s.writeLocked(b)
+		}
+		if err != nil {
 			return nil, err
 		}
 	}
 	return s, nil
 }
 
+// Snapshot returns a deep copy that callers may keep and modify.
+// Prefer Read for short read-only access: copying the whole workspace is expensive.
 func (s *Store) Snapshot() State {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -110,12 +124,33 @@ func (s *Store) Snapshot() State {
 	_ = json.Unmarshal(b, &v)
 	return v
 }
+
+// Read runs fn on the committed state under the read lock, without copying it.
+// fn must not modify st, keep references into it, or call back into the Store.
+func (s *Store) Read(fn func(st *State) error) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return fn(&s.state)
+}
+
+// Version identifies the committed state; it changes after every write.
+func (s *Store) Version() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.version
+}
+
 func (s *Store) Root() string { return s.root }
 
+// Update applies fn as one transaction. On error the previous state is restored
+// byte-for-byte. A transaction that changes nothing is not written to disk.
 func (s *Store) Update(fn func(*State) error) (err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	before, _ := json.Marshal(s.state)
+	before, err := json.Marshal(s.state)
+	if err != nil {
+		return err
+	}
 	defer func() {
 		if err != nil {
 			s.state = State{}
@@ -125,11 +160,24 @@ func (s *Store) Update(fn func(*State) error) (err error) {
 	if err := fn(&s.state); err != nil {
 		return err
 	}
-	if len(s.state.Events) > 2000 {
-		s.state.Events = s.state.Events[len(s.state.Events)-2000:]
-	}
-	b, err := json.MarshalIndent(s.state, "", "  ")
+	trimEvents(&s.state)
+	after, err := json.Marshal(s.state)
 	if err != nil {
+		return err
+	}
+	if bytes.Equal(before, after) {
+		return nil
+	}
+	if err = s.writeLocked(after); err != nil {
+		return fmt.Errorf("保存失败: %w", err)
+	}
+	return nil
+}
+
+// writeLocked atomically replaces workbench.json: temp file, fsync, rename.
+func (s *Store) writeLocked(compact []byte) error {
+	var b bytes.Buffer
+	if err := json.Indent(&b, compact, "", "  "); err != nil {
 		return err
 	}
 	tmp, err := os.CreateTemp(s.root, ".workbench-*.tmp")
@@ -138,20 +186,45 @@ func (s *Store) Update(fn func(*State) error) (err error) {
 	}
 	name := tmp.Name()
 	defer os.Remove(name)
-	if _, err = tmp.Write(b); err == nil {
+	if _, err = tmp.Write(b.Bytes()); err == nil {
 		err = tmp.Sync()
 	}
-	cerr := tmp.Close()
-	if err == nil {
+	if cerr := tmp.Close(); err == nil {
 		err = cerr
 	}
 	if err == nil {
 		err = os.Rename(name, filepath.Join(s.root, "workbench.json"))
 	}
-	if err != nil {
-		return fmt.Errorf("保存失败: %w", err)
+	if err == nil {
+		s.version++
 	}
-	return nil
+	return err
+}
+
+// trimEvents keeps the newest events, first dropping old agent activity beyond its own budget.
+func trimEvents(st *State) {
+	agent := 0
+	for _, e := range st.Events {
+		if e.Kind == "agent" {
+			agent++
+		}
+	}
+	if agent <= maxAgentEvents && len(st.Events) <= maxEvents {
+		return
+	}
+	drop := agent - maxAgentEvents
+	kept := st.Events[:0:0]
+	for _, e := range st.Events {
+		if e.Kind == "agent" && drop > 0 {
+			drop--
+			continue
+		}
+		kept = append(kept, e)
+	}
+	if len(kept) > maxEvents {
+		kept = kept[len(kept)-maxEvents:]
+	}
+	st.Events = kept
 }
 
 func projectByID(st *State, pid string) (*Project, error) {

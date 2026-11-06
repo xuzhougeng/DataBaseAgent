@@ -26,6 +26,7 @@ func chatFixture(t *testing.T) (*Service, <-chan queuedModelCall) {
 		t.Fatal(err)
 	}
 	s := NewService(store)
+	s.autoApprove = true
 	action(t, s, "saveModel", Request{Model: ModelProfile{Name: "queue test", Protocol: "openai", BaseURL: "https://model.example/v1", Model: "test"}})
 	started := make(chan queuedModelCall, 30)
 	old := httpClient

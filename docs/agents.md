@@ -39,10 +39,11 @@ sequenceDiagram
         M-->>L: text and/or tool calls
         loop each call, sequentially
             L->>T: validate arguments, read fresh state
+            T-->>U: high-impact tools wait for Allow / Deny
             T->>S: read snapshot or dispatch validated command
             S-->>T: result
             T-->>L: JSON result or error
-            L->>S: checkpoint tool trace and progress event
+            L->>S: checkpoint tool trace (audit event for writes and failures)
         end
     end
     L->>M: conclude if budget exhausted
@@ -68,6 +69,26 @@ Tools, icons and descriptions are fixed in code. In **Agent center**, right-clic
 
 The separate **Agent review** button on the Review page still generates suggestions only, for up to 20 pending candidates. Its quote must appear verbatim in the title or abstract; otherwise the suggestion becomes `uncertain / low`. The conversational Reviewer can record decisions using `review_candidate`. Decisions require a reason and record `reviewedBy` as `user` or `agent:<id>`; legacy decisions without this field are shown as manual. Chat decisions are model judgments, not automatically verified evidence quotes.
 
+## Approvals and boundaries
+
+Model input includes untrusted titles, abstracts, logs and plugin results, so prompt rules alone are not the boundary. Tools whose effects reach beyond the workspace record wait for the user:
+
+| Tool | Why it asks |
+| --- | --- |
+| `launch_jobs` | Queued jobs run the locked pipeline's shell commands on a remote server. The card shows the job count, server and every step command, from a dry run of the launch; a launch that would fail returns its error without asking. |
+| `resolve_job` | Resuming continues or re-runs remote processing. |
+| `add_server` | Later pipelines may run on the new host. |
+| `save_model`, `delete_model` | A model profile decides which service receives conversation content. |
+| `save_agent`, `reset_agent` | Instructions and model assignments persist into later conversations. |
+| `call_mcp_tool` | External writes, deployments or deletions may take effect immediately. Tools that the configured plugin annotates as `readOnlyHint` run without asking. |
+
+The request appears as a card in the chat's execution timeline and in the **Work progress** panel, with the reason, the dry-run detail where available and the exact call arguments. **Allow** runs the call against the latest state; **Deny** returns a refusal to the agent, which should explain its plan and ask rather than retry. Stopping the request, shutting down, or 30 minutes without an answer also ends it without running the tool. Each request and decision is recorded in the audit trail. Requests are transient: after a restart the interrupted conversation is reviewed and retried explicitly, as for any other interruption.
+
+Two further limits are enforced in code:
+
+- **Project confinement.** In a project conversation every tool, including `delegate_agent`, operates on that project only; a different `projectId` is refused. Cross-project work happens in the workspace conversation, where each project tool must name its project.
+- **Credentials stay with their endpoint.** Agents cannot set an API key or an API-key environment variable. Changing a profile's protocol or its scheme, host or port while it holds a stored key requires entering the key again (for users as well); the old key is never sent to the new address. Path changes on the same host keep the key.
+
 ## Tool catalogue
 
 | Tools | Behavior |
@@ -89,7 +110,7 @@ The separate **Agent review** button on the Review page still generates suggesti
 
 Mutation tools call `Service.Dispatch`, the same command layer used by forms. Partial updates preserve omitted fields; provided arrays replace entire lists. Invalid commands roll back through `Store.Update`. Pipeline versions, queued inputs, CPU quotas, output-path validation and launch de-duplication apply equally to AI and manual operations.
 
-The tool surface does not include recursive chat, generic shell execution or opening arbitrary browser windows. Model configuration tools can refer to an existing API-key environment variable or preserve a stored credential; raw keys and credential-store references are never returned by configuration tools. Initial model setup and direct credential entry remain in Preferences. Remote execution uses the configured SSH executor and its existing host-key checks.
+The tool surface does not include recursive chat, generic shell execution or opening arbitrary browser windows. Model configuration tools keep the profile's existing key source and cannot choose a new one; raw keys and credential-store references are never returned by configuration tools. Initial model setup and direct credential entry remain in Preferences. Remote execution uses the configured SSH executor and its existing host-key checks.
 
 ## Instructions and model resolution
 
@@ -97,4 +118,4 @@ Every prompt states that titles, abstracts, logs and tool results are untrusted 
 
 Model resolution uses the agent's selected profile, or the first profile when it no longer exists or is unset. Readiness requires a base URL, model ID and a configured key source when authentication is configured. The assistant page links to **Preferences** to add a model, or to **Agent center** to change the selected model when profiles already exist.
 
-To add a tool, register a read implementation in `agent.go` or a schema and command mapping in `agent_tools.go`, then add it to appropriate specialist scopes. The primary assistant receives the complete catalogue. New commands should reuse service validation, return concrete IDs/results, and include tests for partial updates, errors and project boundaries.
+To add a tool, register a read implementation in `agent.go` or a schema and command mapping in `agent_tools.go`, then add it to appropriate specialist scopes. Commands live in the table in `commands.go`; a tool with effects outside the workspace record also needs an entry in `approvalReasons` (`approvals.go`). The primary assistant receives the complete catalogue. New commands should reuse service validation, return concrete IDs/results, and include tests for partial updates, errors and project boundaries.

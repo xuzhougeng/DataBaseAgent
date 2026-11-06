@@ -41,11 +41,15 @@ func (s *Store) deleteModelKey(ref string) {
 	}
 }
 
+// modelWithKey resolves the agent's model under the read lock, then reads the
+// keychain without it: an unlock prompt must not block every state write.
 func (s *Store) modelWithKey(a Agent) (ModelProfile, string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	m, err := modelFor(&s.state, a)
-	if err != nil {
+	var m ModelProfile
+	if err := s.Read(func(st *State) error {
+		var err error
+		m, err = modelFor(st, a)
+		return err
+	}); err != nil {
 		return m, "", err
 	}
 	if m.APIKeyRef != "" {
