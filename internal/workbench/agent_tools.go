@@ -215,7 +215,10 @@ func mergeToolFields(target any, fields any) error {
 }
 
 // Tools use the same validated commands as the UI. Partial edits preserve omitted fields.
-func (s *Service) dispatchTool(ctx context.Context, spec toolSpec, st *State, p *Project, a Agent, args map[string]any) (any, error) {
+// toolRequest seeds the command request from the committed state. It runs under the read
+// lock, so the request is returned as JSON: fields such as the pipeline draft alias state
+// slices, and merging the model's arguments into them in place would corrupt the workspace.
+func toolRequest(spec toolSpec, st *State, p *Project, args map[string]any) ([]byte, error) {
 	r := Request{}
 	if p != nil {
 		r.ProjectID = p.ID
@@ -266,6 +269,15 @@ func (s *Service) dispatchTool(ctx context.Context, spec toolSpec, st *State, p 
 			return nil, err
 		}
 		r.Agent = *current
+	}
+	return json.Marshal(r)
+}
+
+// dispatchTool merges the model's arguments into a fresh copy of the seeded request and runs the command.
+func (s *Service) dispatchTool(ctx context.Context, spec toolSpec, a Agent, base []byte, args map[string]any) (any, error) {
+	var r Request
+	if err := json.Unmarshal(base, &r); err != nil {
+		return nil, err
 	}
 	if err := mergeToolFields(&r, args); err != nil {
 		return nil, err

@@ -14,11 +14,12 @@ import (
 )
 
 type Store struct {
-	mu      sync.RWMutex
-	state   State
-	root    string
-	version uint64 // incremented after every committed write; lets readers skip unchanged state
-	epoch   string // random per process, so versions from an earlier run never match
+	mu        sync.RWMutex
+	state     State
+	committed []byte // compact JSON of the committed state: the rollback source and what Snapshot decodes
+	root      string
+	version   uint64 // incremented after every committed write; lets readers skip unchanged state
+	epoch     string // random per process, so versions from an earlier run never match
 }
 
 const (
@@ -105,15 +106,15 @@ func Open(root string) (*Store, error) {
 		s.state.ChatQueuePaused = map[string]bool{}
 	}
 	changed = recoverConversations(&s.state) || changed
+	if b, err = json.Marshal(s.state); err != nil {
+		return nil, err
+	}
 	if changed {
-		b, err := json.Marshal(s.state)
-		if err == nil {
-			err = s.writeLocked(b)
-		}
-		if err != nil {
+		if err = s.writeLocked(b); err != nil {
 			return nil, err
 		}
 	}
+	s.committed = b
 	return s, nil
 }
 
@@ -122,9 +123,8 @@ func Open(root string) (*Store, error) {
 func (s *Store) Snapshot() State {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	b, _ := json.Marshal(s.state)
 	var v State
-	_ = json.Unmarshal(b, &v)
+	_ = json.Unmarshal(s.committed, &v)
 	return v
 }
 
@@ -150,17 +150,13 @@ func (s *Store) Root() string { return s.root }
 func (s *Store) Update(fn func(*State) error) (err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	before, err := json.Marshal(s.state)
-	if err != nil {
-		return err
-	}
 	defer func() {
-		if err != nil {
+		if err != nil { // the committed bytes are the rollback source, so no marshal before fn
 			s.state = State{}
-			_ = json.Unmarshal(before, &s.state)
+			_ = json.Unmarshal(s.committed, &s.state)
 		}
 	}()
-	if err := fn(&s.state); err != nil {
+	if err = fn(&s.state); err != nil {
 		return err
 	}
 	trimEvents(&s.state)
@@ -168,28 +164,27 @@ func (s *Store) Update(fn func(*State) error) (err error) {
 	if err != nil {
 		return err
 	}
-	if bytes.Equal(before, after) {
+	if bytes.Equal(s.committed, after) {
 		return nil
 	}
 	if err = s.writeLocked(after); err != nil {
 		return fmt.Errorf("保存失败: %w", err)
 	}
+	s.committed = after
 	return nil
 }
 
 // writeLocked atomically replaces workbench.json: temp file, fsync, rename.
+// ponytail: the document is written compact. Indenting a 17 MB workspace costs ~70 ms per
+// write, five times the fsync itself; `jq . workbench.json` restores readability on demand.
 func (s *Store) writeLocked(compact []byte) error {
-	var b bytes.Buffer
-	if err := json.Indent(&b, compact, "", "  "); err != nil {
-		return err
-	}
 	tmp, err := os.CreateTemp(s.root, ".workbench-*.tmp")
 	if err != nil {
 		return err
 	}
 	name := tmp.Name()
 	defer os.Remove(name)
-	if _, err = tmp.Write(b.Bytes()); err == nil {
+	if _, err = tmp.Write(compact); err == nil {
 		err = tmp.Sync()
 	}
 	if cerr := tmp.Close(); err == nil {

@@ -303,25 +303,31 @@ func (s *Service) processChatQueue(pid string) {
 	defer s.chatWG.Done()
 	for {
 		s.agentMu.Lock()
-		state := s.Store.Snapshot()
-		messages, _ := scopeMessages(&state, pid)
 		var next Message
-		if s.ctx.Err() == nil && !state.ChatQueuePaused[pid] && s.chatErrors[pid] == "" && messages != nil {
+		var pending []string // synchronous callers to release on shutdown or a storage failure
+		scoped := false
+		_ = s.Store.Read(func(st *State) error {
+			messages, _ := scopeMessages(st, pid)
+			if messages == nil {
+				return nil
+			}
+			scoped = true
+			runnable := s.ctx.Err() == nil && !st.ChatQueuePaused[pid] && s.chatErrors[pid] == ""
 			for _, m := range *messages {
-				if m.Role == "user" && m.Status == "queued" {
+				if pendingMessage(m) {
+					pending = append(pending, m.ID)
+				}
+				if runnable && next.ID == "" && m.Role == "user" && m.Status == "queued" {
 					next = m
-					break
 				}
 			}
-		}
+			return nil
+		})
 		if next.ID == "" {
 			delete(s.chatWorkers, pid)
-			// Synchronous callers must also be released on shutdown or a storage failure.
-			if messages != nil && (s.ctx.Err() != nil || s.chatErrors[pid] != "") {
-				for _, m := range *messages {
-					if pendingMessage(m) {
-						s.finishChatWaiterLocked(m.ID, errors.New("对话队列已暂停"))
-					}
+			if scoped && (s.ctx.Err() != nil || s.chatErrors[pid] != "") {
+				for _, mid := range pending {
+					s.finishChatWaiterLocked(mid, errors.New("对话队列已暂停"))
 				}
 			}
 			s.agentMu.Unlock()
@@ -425,28 +431,40 @@ func completedConversationHistory(messages []Message, cid, before string, includ
 }
 
 func (s *Service) executeMessage(ctx context.Context, pid string, next Message) (string, []Trace, error) {
-	state := s.Store.Snapshot()
-	a, err := agentByID(&state, "assistant")
+	var a Agent
+	var targets []string
+	var turns []Turn
+	var system string
+	// Everything the run needs is derived under the read lock into strings and copies;
+	// the keychain read below stays outside it.
+	if err := s.Store.Read(func(st *State) error {
+		agent, err := agentByID(st, "assistant")
+		if err != nil {
+			return err
+		}
+		a = *agent
+		a.Tools = append([]string(nil), agent.Tools...)
+		if targets, err = requestedAgents(st, next.RequestedAgent, next.Content); err != nil {
+			return err
+		}
+		var p *Project
+		if pid != "" {
+			p, _ = projectByID(st, pid)
+		}
+		messages, err := scopeMessages(st, pid)
+		if err != nil {
+			return err
+		}
+		turns = conversationTurns(completedConversationHistory(*messages, next.ConversationID, next.ID, false), st.Settings.Language)
+		system = systemPrompt(a, p, st.Settings.Language) + skillPrompt(st)
+		return nil
+	}); err != nil {
+		return "", nil, err
+	}
+	m, key, err := s.Store.modelWithKey(a)
 	if err != nil {
 		return "", nil, err
 	}
-	targets, err := requestedAgents(&state, next.RequestedAgent, next.Content)
-	if err != nil {
-		return "", nil, err
-	}
-	m, key, err := s.Store.modelWithKey(*a)
-	if err != nil {
-		return "", nil, err
-	}
-	var p *Project
-	if pid != "" {
-		p, _ = projectByID(&state, pid)
-	}
-	messages, err := scopeMessages(&state, pid)
-	if err != nil {
-		return "", nil, err
-	}
-	turns := conversationTurns(completedConversationHistory(*messages, next.ConversationID, next.ID, false), state.Settings.Language)
 	turns = append(turns, Turn{Role: "user", Text: next.Content})
 	ctx = context.WithValue(ctx, chatExecutionKey{}, &chatExecution{ProjectID: pid, ConversationID: next.ConversationID, MessageID: next.ID})
 	ctx = context.WithValue(ctx, agentTraceKey{}, next.ID)
@@ -455,11 +473,10 @@ func (s *Service) executeMessage(ctx context.Context, pid string, next Message) 
 		args, _ := json.Marshal(map[string]string{"agentId": target, "task": next.Content})
 		initial = append(initial, ToolCall{ID: id("delegate"), Name: "delegate_agent", Args: args})
 	}
-	system := systemPrompt(*a, p, state.Settings.Language) + skillPrompt(&state)
 	if next.RetryOf != "" {
 		system += "\nThis is an explicit retry. Earlier tools may have already changed state; read current state before repeating any mutation."
 	}
-	return s.runAgent(ctx, *a, m, key, system, turns, pid, initial...)
+	return s.runAgent(ctx, a, m, key, system, turns, pid, initial...)
 }
 
 func (s *Service) manageConversation(action string, r Request) error {

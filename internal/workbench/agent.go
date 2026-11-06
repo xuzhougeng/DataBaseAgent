@@ -258,17 +258,19 @@ func (s *Service) runTool(ctx context.Context, pid string, a Agent, c ToolCall) 
 		}
 		pid = explicit
 	}
-	st := s.Store.Snapshot()
-	var p *Project
-	if pid != "" {
-		var e error
-		p, e = projectByID(&st, pid)
-		if e != nil {
-			return fail(e.Error())
+	// The project is looked up under the read lock whenever it is needed, so tools see the
+	// latest committed state without copying the workspace (Snapshot costs O(workspace)).
+	lookup := func(st *State) (*Project, error) {
+		if pid == "" {
+			if !spec.Workspace {
+				return nil, errors.New("请提供 projectId，或先创建项目")
+			}
+			return nil, nil
 		}
+		return projectByID(st, pid)
 	}
-	if p == nil && !spec.Workspace {
-		return fail("请提供 projectId，或先创建项目")
+	if e := s.Store.Read(func(st *State) error { _, err := lookup(st); return err }); e != nil {
+		return fail(e.Error())
 	}
 	if approvalReasons[c.Name] != "" && c.Name != "call_mcp_tool" {
 		detail := ""
@@ -281,14 +283,7 @@ func (s *Service) runTool(ctx context.Context, pid string, a Agent, c ToolCall) 
 		if e := s.awaitApproval(ctx, pid, a, c.Name, c.Args, detail); e != nil {
 			return fail(e.Error())
 		}
-		// The workspace may have changed while the user decided.
-		st = s.Store.Snapshot()
-		if pid != "" {
-			var e error
-			if p, e = projectByID(&st, pid); e != nil {
-				return fail(e.Error())
-			}
-		}
+		// The workspace may have changed while the user decided; the reads below see the latest state.
 	}
 	if c.Name == "delegate_agent" {
 		if a.ID != "assistant" {
@@ -304,16 +299,35 @@ func (s *Service) runTool(ctx context.Context, pid string, a Agent, c ToolCall) 
 		return out, false
 	}
 	var result any
+	var b []byte
 	var e error
 	if spec.Action != "" {
-		result, e = s.dispatchTool(ctx, spec, &st, p, a, args)
+		var base []byte
+		e = s.Store.Read(func(st *State) error {
+			p, err := lookup(st)
+			if err != nil {
+				return err
+			}
+			base, err = toolRequest(spec, st, p, args)
+			return err
+		})
+		if e == nil {
+			result, e = s.dispatchTool(ctx, spec, a, base, args)
+		}
+		if e == nil {
+			b, e = json.Marshal(result)
+		}
 	} else {
-		result = spec.Run(&st, p, args)
+		e = s.Store.Read(func(st *State) error {
+			p, err := lookup(st)
+			if err != nil {
+				return err
+			}
+			result = spec.Run(st, p, args)
+			b, err = json.Marshal(result) // inside the lock: results may reference state
+			return err
+		})
 	}
-	if e != nil {
-		return fail(e.Error())
-	}
-	b, e := json.Marshal(result)
 	if e != nil {
 		return fail(e.Error())
 	}
