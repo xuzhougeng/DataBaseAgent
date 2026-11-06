@@ -162,6 +162,29 @@ function sidebar(p){
     <div class="sidebar-bottom">${item('settings','settings','偏好设置')}<div class="version"><span>v0.2.0 · ${t('本地工作空间')}</span><button class="text-button" onclick="setLang('${lang==='en'?'zh':'en'}')">${lang==='en'?'中文':'English'}</button></div></div></nav>`;
 }
 
+// Events are recorded in Chinese. Fixed titles translate whole; titles built around an
+// agent or tool name, and detail lines with counts, translate by pattern.
+const eventPatterns=[
+  [/^(.+) 请求确认 · (.+)$/,(a,tool)=>t('{a} 请求确认',{a:t(a)})+' · '+tool],
+  [/^(.+) 子任务 已完成$/,a=>t('{a} 的子任务已完成',{a:t(a)})],
+  [/^(.+) 子任务 执行中断$/,a=>t('{a} 的子任务已中断',{a:t(a)})],
+  [/^(.+) · (.+) 已完成$/,(a,tool)=>t('{a} · {tool} 已完成',{a:t(a),tool})],
+  [/^(.+) · (.+) 未完成$/,(a,tool)=>t('{a} · {tool} 未完成',{a:t(a),tool})],
+  [/^(\d+) 条新增记录$/,n=>t('{n} 条新增记录',{n})],
+  [/^(\d+) 个任务 · 流程 v(\d+)$/,(n,v)=>t('{n} 个任务 · 流程 v{v}',{n,v})],
+  [/^每 (\d+) 秒巡检，最多重试 (\d+) 次$/,(n,r)=>t('每 {n} 秒巡检，最多重试 {r} 次',{n,r})],
+  [/^(.*) · 第 (\d+) 次 · 流程 v(\d+)$/s,(a,n,v)=>t('{a} · 第 {n} 次 · 流程 v{v}',{a,n,v})],
+  [/^(.*) · (\d+) 份文件$/s,(a,n)=>t('{a} · {n} 份文件',{a,n})],
+  [/^(.*) · 调用工具 (\d+) 次$/s,(a,n)=>t('{a} · 调用工具 {n} 次',{a,n})],
+  [/^(.*) · 命中 (\d+)，获取 (\d+)，新增 (\d+)（上限 (\d+)）$/s,(a,h,f,n,l)=>t('{a} · 命中 {h}，获取 {f}，新增 {n}（上限 {l}）',{a,h,f,n,l})],
+  [/^(.*) · 本次新增 (\d+) 字节$/s,(a,n)=>t('{a} · 本次新增 {n} 字节',{a,n})]
+];
+function eventText(s){
+  if(lang!=='en'||!s||EN[s])return t(s);
+  for(const [re,fn] of eventPatterns){const m=s.match(re);if(m)return fn(...m.slice(1));}
+  const i=s.indexOf(' · ');// "复核已记录 · user", "主 Agent 委派 · 复核员", "已允许 Agent 操作 · tool"
+  return i>0&&EN[s.slice(0,i)]?s.split(' · ').map(x=>t(x)).join(' · '):s;
+}
 function toggleAside(){ui.asideHidden=!ui.asideHidden;try{localStorage.setItem('dba-aside',ui.asideHidden?'hidden':'')}catch{}render();}
 function aside(p){
   const events=db.events.filter(e=>!p||!e.projectId||e.projectId===p.id).slice(-20).reverse(),helps=helpJobs().filter(j=>!p||j.projectId===p.id),paused=db.settings.paused,runs=(meta.agentRuns||[]).filter(r=>!p||r.projectId===p.id),approvals=(meta.approvals||[]).filter(ap=>(!p||!ap.projectId||ap.projectId===p.id)&&!(ui.page==='agent'&&ap.conversationId&&ap.conversationId===currentConversation()?.id));
@@ -171,7 +194,7 @@ function aside(p){
     <div class="aside-feed">${runs.map(r=>`<div class="run-progress" role="status"><strong>${I('agent')}${esc(agents().find(a=>a.id===(r.subagentId||r.agentId))?.name||'Agent')}</strong><p>${r.tool?t('正在执行 {tool}',{tool:esc(r.tool)}):t('正在规划下一步…')}</p><small>${t('第 {n} 步',{n:r.step||1})} · ${date(r.startedAt)}</small></div>`).join('')}
     ${approvals.map(approvalCard).join('')}
     ${helps.map(j=>`<div class="help-card"><strong>${I('alert')}${t('{a} 需要你的判断',{a:esc(j.accession)})}</strong><p>${esc(j.help||j.error)}</p><div class="decision">${btn(t('查看并处理'),`jobDetail('${j.id}')`,'small')}${btn(t('交给 AI 排查'),`askAgent('operator','${j.id}')`,'small','agent',!meta.ready?.operator)}</div></div>`).join('')}
-    <div class="aside-label"><span>${t('最近动态')}</span><span>${t('上次巡检')} ${date(db.lastTick,t('尚未巡检'))}</span></div>${events.length?events.map(e=>`<div class="event ${e.kind==='help'?'warn':e.kind==='error'?'err':''}"><time>${date(e.at)}</time><strong>${esc(e.title)}</strong>${e.detail?`<p>${esc(e.detail)}</p>`:''}${e.jobId?`<button class="text-button" onclick="jobDetail('${e.jobId}')">${t('查看任务')}</button>`:''}</div>`).join(''):`<p class="muted">${t('项目动态会显示在这里。')}</p>`}</div>
+    <div class="aside-label"><span>${t('最近动态')}</span><span>${t('上次巡检')} ${date(db.lastTick,t('尚未巡检'))}</span></div>${events.length?events.map(e=>`<div class="event ${e.kind==='help'?'warn':e.kind==='error'?'err':''}"><time>${date(e.at)}</time><strong>${esc(eventText(e.title))}</strong>${e.detail?`<p>${esc(eventText(e.detail))}</p>`:''}${e.jobId?`<button class="text-button" onclick="jobDetail('${e.jobId}')">${t('查看任务')}</button>`:''}</div>`).join(''):`<p class="muted">${t('项目动态会显示在这里。')}</p>`}</div>
     </aside>`;
 }
 function allProjects(){
@@ -245,7 +268,7 @@ function agentCenterPage(){
   const helps=helpJobs(),events=db.events.slice(-100).reverse(),s=db.settings,readyCount=agents().filter(a=>meta.ready?.[a.id]).length,cur=currentAgent();
   return head(t('Agent 中心'),s.paused?t('自动巡检已暂停，远端进程继续运行。'):t('每 {i} 秒巡检远端任务，可恢复错误最多重试 {r} 次；{c}/{n} 个 Agent 已配置模型。',{i:s.intervalSeconds,r:s.maxRetries,c:readyCount,n:agents().length}),btn(t(s.paused?'恢复巡检':'暂停巡检'),'toggleAgent()',s.paused?'primary':'',s.paused?'play':'pause')+btn(t('偏好设置'),"go('settings')",'','settings'))+`<section class="card"><div class="card-head"><h2>${t('Agent 角色')}</h2><small>${t('主 Agent 负责主对话；子 Agent 可通过 @ 或由主 Agent 调度。点击角色编辑配置。')}</small></div><div class="roster">${agents().map(a=>{const m=agentModel(a);return `<button class="roster-card ${a.id===cur?.id?'active':''}" data-agent-id="${a.id}" title="${t('编辑 Agent')}" onclick="agentModal('${a.id}')" oncontextmenu="event.preventDefault();agentModal('${a.id}')" onkeydown="if(event.key==='ContextMenu'||event.shiftKey&&event.key==='F10'){event.preventDefault();agentModal('${a.id}')}"><span class="agent-icon">${I(a.icon)}</span><strong>${esc(t(a.name))} ${badge(t(a.id==='assistant'?'主 Agent':'子 Agent'),'gray')}</strong><small>${esc(t(a.description))}</small><span class="muted mono">${m?esc(m.name):t('未配置模型')}</span>${badge(t(meta.ready?.[a.id]?'可用':'待配置模型'),meta.ready?.[a.id]?'':'orange')}</button>`;}).join('')}</div></section>
     <section class="card"><div class="card-head"><h2>${t('求助请求')}</h2>${badge(helps.length?t('{n} 项待处理',{n:helps.length}):t('无'),helps.length?'orange':'gray')}</div>${helps.length?helps.map(j=>`<div class="content-pad"><div class="server-title"><strong class="mono">${esc(j.accession)}</strong><span class="muted">${esc(db.projects.find(p=>p.id===j.projectId)?.name||'')}</span></div><p class="muted">${esc(j.help)}</p>${j.error?`<p class="muted">${esc(j.error)}</p>`:''}<div class="decision">${btn(t('查看证据与处理'),`jobDetail('${j.id}')`,'small','arrow')}${btn(t('让运维巡检员诊断'),`askAgent('operator','${j.id}')`,'small','wrench',!meta.ready?.operator)}</div></div>`).join(''):`<div class="content-pad muted">${t('目前没有需要协助的任务。')}</div>`}</section>
-    <section class="card"><div class="card-head"><h2>${t('操作记录')}</h2><small>${t('最近 {n} 条',{n:events.length})}</small></div>${table(['时间','动作','依据与结果'].map(x=>t(x)),events.map(e=>`<tr><td>${date(e.at)}</td><td>${esc(e.title)}</td><td class="wrap">${esc(e.detail)}${e.jobId?` <button class="text-button" onclick="jobDetail('${e.jobId}')">${t('查看任务')}</button>`:''}</td></tr>`),t('等待第一条记录'))}</section>`;
+    <section class="card"><div class="card-head"><h2>${t('操作记录')}</h2><small>${t('最近 {n} 条',{n:events.length})}</small></div>${table(['时间','动作','依据与结果'].map(x=>t(x)),events.map(e=>`<tr><td>${date(e.at)}</td><td>${esc(eventText(e.title))}</td><td class="wrap">${esc(eventText(e.detail))}${e.jobId?` <button class="text-button" onclick="jobDetail('${e.jobId}')">${t('查看任务')}</button>`:''}</td></tr>`),t('等待第一条记录'))}</section>`;
 }
 
 function settingsPage(){
@@ -374,7 +397,7 @@ function downloadSite(){
  run(async()=>{const res=await fetch(siteURL(pid)+'&download=1');if(!res.ok)throw new Error(t('下载失败'));saveBlob('index.html',await res.blob());});
 }
 function skillsPage(){
- return head('SKILL',t('用 SKILL 定义不同类型数据库的字段和静态展示模板，也可为 Agent 提供工作指引。'),btn(t('导入 SKILL.md'),'importSkillModal()','primary','plus'))+`<div class="mode-note">${I('file')}<span>${t('模板随 SKILL.md 导入。当前支持表格和卡片布局；技能通过已有工具执行，不自动运行附带脚本。')}</span></div><div class="grid-projects">${(db.skills||[]).map(s=>`<section class="card skill-card"><div class="project-top"><h2>${esc(s.template?t(s.template.label):s.name)}</h2>${badge(t(s.enabled?'已启用':'已停用'),s.enabled?'':'gray')}</div><p class="mono">${esc(s.name)}</p><p class="muted">${esc(s.description)}</p>${s.template?`<p>${esc(t(s.template.layout==='cards'?'卡片布局':'表格布局'))} · ${esc((s.template.requiredColumns||[]).join(', '))}</p>`:''}<div class="actions">${btn(t('查看'),'viewSkill(\''+s.id+'\')','small')}${btn(t(s.enabled?'停用':'启用'),`toggleSkill('${s.id}',${!s.enabled})`,'small')}${btn(t('删除'),`deleteSkillModal('${s.id}')`,'small','trash')}</div></section>`).join('')||empty(t('暂无 SKILL，请导入 SKILL.md。'))}</div>`;
+ return head('SKILL',t('用 SKILL 定义不同类型数据库的字段和静态展示模板，也可为 Agent 提供工作指引。'),btn(t('导入 SKILL.md'),'importSkillModal()','primary','plus'))+`<div class="mode-note">${I('file')}<span>${t('模板随 SKILL.md 导入。当前支持表格和卡片布局；技能通过已有工具执行，不自动运行附带脚本。')}</span></div><div class="grid-projects">${(db.skills||[]).map(s=>`<section class="card skill-card"><div class="project-top"><h2>${esc(s.template?t(s.template.label):s.name)}</h2>${badge(t(s.enabled?'已启用':'已停用'),s.enabled?'':'gray')}</div><p class="mono">${esc(s.name)}</p><p class="muted">${esc(t(s.description))}</p>${s.template?`<p>${esc(t(s.template.layout==='cards'?'卡片布局':'表格布局'))} · ${esc((s.template.requiredColumns||[]).join(', '))}</p>`:''}<div class="actions">${btn(t('查看'),'viewSkill(\''+s.id+'\')','small')}${btn(t(s.enabled?'停用':'启用'),`toggleSkill('${s.id}',${!s.enabled})`,'small')}${btn(t('删除'),`deleteSkillModal('${s.id}')`,'small','trash')}</div></section>`).join('')||empty(t('暂无 SKILL，请导入 SKILL.md。'))}</div>`;
 }
 function importSkillModal(){
  modal(t('导入 SKILL.md'),`<p class="muted">${t('导入包含 name、description 和正文的 SKILL.md。网站模板在 metadata.dba 中声明布局与字段。')}</p><div class="field"><label for="skill-file">SKILL.md</label><input id="skill-file" type="file" accept=".md" onchange="readSkillFile(this)"></div>${field(t('SKILL 内容'),'skill-content','','textarea','class="mono site-data" spellcheck="false"')}`,btn(t('导入'),'saveSkill()','primary','plus'));

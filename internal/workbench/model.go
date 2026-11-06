@@ -22,7 +22,8 @@ type State struct {
 type Project struct {
 	Mode        string         `json:"mode"`
 	Site        *StaticSite    `json:"site,omitempty"`
-	Example     string         `json:"example,omitempty"` // built-in example this project was created from
+	Example     string         `json:"example,omitempty"`     // built-in example this project was created from
+	ExampleLang string         `json:"exampleLang,omitempty"` // its data language: "zh" (also when empty) or "en"
 	ID          string         `json:"id"`
 	Name        string         `json:"name"`
 	Description string         `json:"description"`

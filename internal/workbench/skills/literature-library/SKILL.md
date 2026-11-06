@@ -1,21 +1,21 @@
 ---
 name: literature-library
-description: 将已有文献、教程或学术资源列表构建为静态卡片式资源库，适合按标题搜索和阅读摘要。
+description: Builds a static card library from existing papers, tutorials or academic resource lists, for searching by title and reading summaries.
 metadata:
   dba:
-    label: 文献资源库
+    label: Literature library
     layout: cards
     accent: '#466b9c'
     required-columns: [title, summary]
     title-column: title
 ---
 
-# 文献资源库
+# Literature library
 
-用于 DBA 已有数据（static）项目；使用用户已有的文献或资源记录。
+For DBA existing-data (static) projects, using literature or resource records the user already has.
 
-每条记录必须有 `title` 和 `summary` 列，可保留 `authors`、`year`、`doi`、`url`、`tags`。按用户提供的内容展示，不根据标题编造摘要、作者、DOI 或年份。字段需重命名时解释对应关系；如果没有摘要，先确认是否使用已有说明或留空。
+Each record must have `title` and `summary` columns and may keep `authors`, `year`, `doi`, `url` and `tags`. Show what the user provided; do not invent summaries, authors, DOIs or years from a title. Explain the mapping when fields need renaming. If there is no summary, first confirm whether to use an existing description or leave it blank.
 
-通过 `read_skill` 获取本技能的 `skillId`。将真实 CSV、TSV 或 JSON 交给 `build_static_site`，连同网站标题、简介和 `skillId`。模板以标题为卡片标题，其余字段按原始数据展示，支持本地关键词搜索。
+Get this skill's `skillId` with `read_skill`. Pass the real CSV, TSV or JSON to `build_static_site` together with the site title, description and `skillId`. The template uses the title as the card heading, shows the other fields as given, and supports local keyword search.
 
-完成后报告真实记录数，指向静态网站页面的预览与 HTML 下载。当前不配置数据库、不部署动态应用、不自动联网补齐记录。
+When done, report the real record count and point to the preview and HTML download on the Static website page. This template does not configure a database, deploy a dynamic app or fetch missing records online.

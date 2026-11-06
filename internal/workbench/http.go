@@ -63,7 +63,7 @@ func Handler(s *Service, assets fs.FS) http.Handler {
 			}
 			writeSite(w, r, p.Site)
 		case r.Method == "GET" && r.URL.Path == "/api/examples":
-			list, err := loadExamples()
+			list, err := examplesFor(r.URL.Query().Get("lang"))
 			if err != nil {
 				w.WriteHeader(500)
 				write(map[string]string{"error": err.Error()})
@@ -71,7 +71,7 @@ func Handler(s *Service, assets fs.FS) http.Handler {
 			}
 			write(map[string]any{"examples": list})
 		case r.Method == "GET" && r.URL.Path == "/api/example-site":
-			ex, err := exampleByID(r.URL.Query().Get("id"))
+			ex, err := exampleByID(r.URL.Query().Get("id"), r.URL.Query().Get("lang"))
 			if err != nil || ex.SiteData == "" {
 				w.WriteHeader(404)
 				write(map[string]string{"error": "示例不存在"})

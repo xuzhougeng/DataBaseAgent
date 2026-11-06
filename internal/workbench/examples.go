@@ -15,19 +15,22 @@ import (
 
 // Example is one entry of the built-in gallery (examples/catalog.json). Its
 // files are design-demo data shipped in the binary; previews never write the
-// workspace, and createExampleProject adds at most one project per example.
+// workspace, and createExampleProject adds at most one project per example and
+// language. The catalog keeps Chinese data with English copies beside it
+// (projectEn, and each file's en path); localized picks one language.
 type Example struct {
-	ID         string         `json:"id"`
-	Mode       string         `json:"mode"`
-	Title      string         `json:"title"`
-	Summary    string         `json:"summary"`
-	Skill      string         `json:"skill,omitempty"`
-	SiteData   string         `json:"siteData,omitempty"`
-	Candidates string         `json:"candidates,omitempty"`
-	Template   *SiteTemplate  `json:"template,omitempty"`
-	Project    exampleProject `json:"project"`
-	Groups     []exampleGroup `json:"groups"`
-	Files      []exampleFile  `json:"files"`
+	ID         string          `json:"id"`
+	Mode       string          `json:"mode"`
+	Title      string          `json:"title"`
+	Summary    string          `json:"summary"`
+	Skill      string          `json:"skill,omitempty"`
+	SiteData   string          `json:"siteData,omitempty"`
+	Candidates string          `json:"candidates,omitempty"`
+	Template   *SiteTemplate   `json:"template,omitempty"`
+	Project    exampleProject  `json:"project"`
+	ProjectEn  *exampleProject `json:"projectEn,omitempty"`
+	Groups     []exampleGroup  `json:"groups"`
+	Files      []exampleFile   `json:"files"`
 }
 
 type exampleProject struct {
@@ -47,11 +50,13 @@ type exampleGroup struct {
 }
 
 type exampleFile struct {
-	Path  string `json:"path"`
-	Group string `json:"group"`
-	Title string `json:"title"`
-	Note  string `json:"note,omitempty"`
-	Text  string `json:"text"`
+	Path   string `json:"path"`
+	En     string `json:"en,omitempty"` // English copy; language-neutral files have none
+	Group  string `json:"group"`
+	Title  string `json:"title"`
+	Note   string `json:"note,omitempty"`
+	Text   string `json:"text"`
+	textEn string
 }
 
 // loadExamples reads the catalog once and attaches each file's text and, for
@@ -75,6 +80,12 @@ var loadExamples = sync.OnceValues(func() ([]Example, error) {
 				return nil, fmt.Errorf("example %s: %w", ex.ID, err)
 			}
 			ex.Files[j].Text = string(text)
+			if ex.Files[j].En != "" {
+				if text, err = fs.ReadFile(examples.FS, ex.Files[j].En); err != nil {
+					return nil, fmt.Errorf("example %s: %w", ex.ID, err)
+				}
+				ex.Files[j].textEn = string(text)
+			}
 		}
 		if ex.Skill != "" {
 			skill, err := bundledSkill(ex.Skill)
@@ -87,22 +98,53 @@ var loadExamples = sync.OnceValues(func() ([]Example, error) {
 	return catalog.Examples, nil
 })
 
-func bundledSkill(name string) (Skill, error) {
-	content, err := bundledSkills.ReadFile("skills/" + name + "/SKILL.md")
-	if err != nil {
-		return Skill{}, err
+// exampleLang maps a UI language to the example data language; anything but
+// English is the Chinese original.
+func exampleLang(lang string) string {
+	if lang == "en" {
+		return "en"
 	}
-	return parseSkill(string(content))
+	return "zh"
 }
 
-func exampleByID(id string) (*Example, error) {
+// localized returns a copy holding only one language's project fields and file text.
+func (ex Example) localized(lang string) Example {
+	files := make([]exampleFile, len(ex.Files))
+	for i, f := range ex.Files {
+		if lang == "en" && f.textEn != "" {
+			f.Text = f.textEn
+		}
+		f.En, f.textEn = "", ""
+		files[i] = f
+	}
+	if lang == "en" && ex.ProjectEn != nil {
+		ex.Project = *ex.ProjectEn
+	}
+	ex.ProjectEn, ex.Files = nil, files
+	return ex
+}
+
+func examplesFor(lang string) ([]Example, error) {
+	list, err := loadExamples()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Example, len(list))
+	for i := range list {
+		out[i] = list[i].localized(exampleLang(lang))
+	}
+	return out, nil
+}
+
+func exampleByID(id, lang string) (*Example, error) {
 	list, err := loadExamples()
 	if err != nil {
 		return nil, err
 	}
 	for i := range list {
 		if list[i].ID == id {
-			return &list[i], nil
+			ex := list[i].localized(exampleLang(lang))
+			return &ex, nil
 		}
 	}
 	return nil, errors.New("示例不存在")
@@ -145,17 +187,18 @@ func exampleSite(st *State, ex *Example, preview bool) (*StaticSite, error) {
 }
 
 func createExampleProject(_ *Service, _ context.Context, st *State, r Request) (any, error) {
-	ex, err := exampleByID(r.ExampleID)
+	lang := exampleLang(r.Lang)
+	ex, err := exampleByID(r.ExampleID, lang)
 	if err != nil {
 		return nil, err
 	}
 	for _, p := range st.Projects {
-		if p.Example == ex.ID {
+		if p.Example == ex.ID && exampleLang(p.ExampleLang) == lang {
 			return map[string]any{"projectId": p.ID, "created": false}, nil
 		}
 	}
 	p := newProject(ex.Mode, ex.Project.Name, ex.Project.Description)
-	p.Example, p.Organism, p.Assay, p.Criteria, p.Query = ex.ID, ex.Project.Organism, ex.Project.Assay, ex.Project.Criteria, ex.Project.Query
+	p.Example, p.ExampleLang, p.Organism, p.Assay, p.Criteria, p.Query = ex.ID, lang, ex.Project.Organism, ex.Project.Assay, ex.Project.Criteria, ex.Project.Query
 	if ex.Project.Source != "" {
 		p.Source = ex.Project.Source
 	}

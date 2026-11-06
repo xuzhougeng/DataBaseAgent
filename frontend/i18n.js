@@ -278,9 +278,53 @@ const EN={
 "产物清单":"Output manifest",
 "“导出产物清单”生成的文件。":"The file Export manifest produces.",
 "数据契约":"Data contract",
-"后续建库所需的字段：来源、扰动、分组、流程版本、产物、复核结论与运行记录。":"The fields needed to build the database later: source, perturbation, groups, pipeline version, outputs, review decision and run history."
+"后续建库所需的字段：来源、扰动、分组、流程版本、产物、复核结论与运行记录。":"The fields needed to build the database later: source, perturbation, groups, pipeline version, outputs, review decision and run history.",
+"{a} 的子任务已完成":"{a} finished a subtask",
+"{a} 的子任务已中断":"{a} subtask interrupted",
+"{a} · {tool} 已完成":"{a} · {tool} done",
+"{a} · {tool} 未完成":"{a} · {tool} failed",
+"{n} 条新增记录":"{n} new records",
+"{n} 个任务 · 流程 v{v}":"{n} jobs · pipeline v{v}",
+"每 {n} 秒巡检，最多重试 {r} 次":"Check every {n} s, retry up to {r} times",
+"{a} · 第 {n} 次 · 流程 v{v}":"{a} · attempt {n} · pipeline v{v}",
+"{a} · {n} 份文件":"{a} · {n} files",
+"{a} · 调用工具 {n} 次":"{a} · {n} tool calls",
+"{a} · 命中 {h}，获取 {f}，新增 {n}（上限 {l}）":"{a} · {h} hits, {f} fetched, {n} new (limit {l})",
+"{a} · 本次新增 {n} 字节":"{a} · {n} bytes this run",
+"复核员提供建议":"Reviewer suggested a decision",
+"主 Agent 委派":"Main agent delegated",
+"复核已记录":"Review recorded",
+"流程版本已锁定":"Pipeline version locked",
+"处理完成，任务恢复":"Resolved; job resumes",
+"巡检设置已更新":"Monitoring settings updated",
+"Agent 指令已恢复默认":"Agent instructions reset",
+"模型配置已删除":"Model profile deleted",
+"Agent 开始执行":"Agent started",
+"检索未完成":"Search incomplete",
+"检索完成":"Search finished",
+"任务开始提交":"Job submitting",
+"远端已接受任务":"Remote host accepted the job",
+"远端处理完成，准备同步":"Remote processing finished; syncing",
+"检测到可恢复故障，等待重试":"Recoverable failure; waiting to retry",
+"分析产物已校验并同步到本地":"Outputs verified and synced locally",
+"任务需要人工协助":"Job needs your help",
+"传输中断，已保留进度，等待续传":"Transfer interrupted; progress kept, waiting to resume",
+"保留现场，等待恢复":"State kept; waiting to recover",
+"服务器连接检查":"Server connection check",
+"任务已加入队列":"Jobs queued",
+"已允许 Agent 操作":"Agent action allowed",
+"已拒绝 Agent 操作":"Agent action denied",
+"Agent 已回复":"Agent replied",
+"Agent 执行中断":"Agent run interrupted"
 };
-const t=(s,v={})=>(lang==='en'&&EN[s]||s).replace(/\{(\w+)\}/g,(m,k)=>k in v?v[k]:m);
+// The built-in SKILL.md files are English; the Chinese UI shows their label and description in Chinese.
+const ZH={
+"Research data catalogue":"研究数据目录",
+"Literature library":"文献资源库",
+"Turns existing research datasets into a searchable static data catalogue for browsing datasets by accession, organism and assay.":"将已有的研究数据集整理为可搜索的静态数据目录，适合按编号浏览数据集、物种和测序类型。",
+"Builds a static card library from existing papers, tutorials or academic resource lists, for searching by title and reading summaries.":"将已有文献、教程或学术资源列表构建为静态卡片式资源库，适合按标题搜索和阅读摘要。"
+};
+const t=(s,v={})=>((lang==='en'?EN[s]:ZH[s])||s).replace(/\{(\w+)\}/g,(m,k)=>k in v?v[k]:m);
 function setLang(l){lang=l;try{localStorage.setItem('dba-lang',l)}catch{}document.documentElement.lang=l==='en'?'en':'zh-CN';document.title=t('DBA · 数据库构建工作台');render();}
 EN['DBA · 数据库构建工作台']='DBA · Database Workbench';
 EN['收起 Agent 面板']='Collapse agent panel';EN['展开 Agent 面板']='Expand agent panel';

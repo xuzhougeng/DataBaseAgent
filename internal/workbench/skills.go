@@ -1,7 +1,9 @@
 package workbench
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,14 +17,12 @@ import (
 //go:embed skills/*/SKILL.md
 var bundledSkills embed.FS
 
+var bundledSkillNames = []string{"research-catalog", "literature-library"}
+
 func defaultSkills() []Skill {
 	out := []Skill{}
-	for _, name := range []string{"research-catalog", "literature-library"} {
-		content, err := bundledSkills.ReadFile("skills/" + name + "/SKILL.md")
-		if err != nil {
-			panic(err)
-		}
-		skill, err := parseSkill(string(content))
+	for _, name := range bundledSkillNames {
+		skill, err := bundledSkill(name)
 		if err != nil {
 			panic(err)
 		}
@@ -30,6 +30,42 @@ func defaultSkills() []Skill {
 		out = append(out, skill)
 	}
 	return out
+}
+
+func bundledSkill(name string) (Skill, error) {
+	content, err := bundledSkills.ReadFile("skills/" + name + "/SKILL.md")
+	if err != nil {
+		return Skill{}, err
+	}
+	return parseSkill(string(content))
+}
+
+// legacyBundledSkills fingerprints (SHA-256 of the stored Content) the Chinese
+// built-in SKILL.md text shipped before the built-ins were written in English.
+var legacyBundledSkills = map[string]string{
+	"research-catalog":   "52865ea094cee9f636f7f96169e16e3e0e41f9ed15c4bb21d724c5e10497322e",
+	"literature-library": "9792206193abd46255905feb5b56c93d655334632b80753027b5eadaeda52003",
+}
+
+// upgradeBundledSkills replaces built-in skills a workspace still holds in
+// their original shipped text with the current version, keeping ID and the
+// enabled switch. Edited or re-imported skills are left alone, and generated
+// websites keep their template snapshots.
+func upgradeBundledSkills(skills []Skill) bool {
+	changed := false
+	for i, sk := range skills {
+		sum := sha256.Sum256([]byte(sk.Content))
+		if legacy, ok := legacyBundledSkills[sk.Name]; !ok || legacy != hex.EncodeToString(sum[:]) {
+			continue
+		}
+		current, err := bundledSkill(sk.Name)
+		if err != nil {
+			continue
+		}
+		current.ID, current.Enabled = sk.ID, sk.Enabled
+		skills[i], changed = current, true
+	}
+	return changed
 }
 
 // Skills contain user-installed instructions, never executable tool definitions.

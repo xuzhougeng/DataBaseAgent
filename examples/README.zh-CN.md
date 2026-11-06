@@ -10,7 +10,9 @@
 
 这些文件编译进应用，安装包里也有。打开侧栏「示例」，或「所有项目」页的「看看示例」。示例页只做预览，不改动工作空间：两个静态模板直接显示生成的网站；收集模式依次展示研究主题、候选、样本分组、处理产物和数据契约。每个文件都可下载。「创建示例项目」会新建一个载入示例数据的项目（网站已生成，或候选已导入为待复核）；之后再点同一个示例，会打开这个项目。
 
-页面内容由 [catalog.json](catalog.json) 描述。新增示例时在其中列出文件，并在 `frontend/i18n.js` 补上展示文字的英文；`node scripts/check-i18n.js` 会检查。
+示例数据跟随应用语言。切换到英文后，示例页、网站预览、下载文件和新建的示例项目都改用 [en/](en/) 中的英文版：`static/*.tsv`、`collect/candidates.json`、`collect/dba_demo_manifest.json` 和 `collect/data-contract.json`。英文版逐个值翻译，列、行和字段与原文件一致。产物和样本分组不含中文，两种语言共用。中英文各建一个示例项目。
+
+页面内容由 [catalog.json](catalog.json) 描述。新增示例时在其中列出文件，为含中文的文件提供 `en` 英文版并填写 `projectEn`，再在 `frontend/i18n.js` 补上展示文字的英文。`node scripts/check-i18n.js` 检查展示文字；`go test ./internal/workbench/ -run Example` 检查英文模式不出现中文数据，且英文版与原文件结构一致。
 
 ## 文件
 
