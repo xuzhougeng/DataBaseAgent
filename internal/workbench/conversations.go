@@ -446,7 +446,7 @@ func (s *Service) executeMessage(ctx context.Context, pid string, next Message) 
 	if err != nil {
 		return "", nil, err
 	}
-	turns := conversationTurns(completedConversationHistory(*messages, next.ConversationID, next.ID, false))
+	turns := conversationTurns(completedConversationHistory(*messages, next.ConversationID, next.ID, false), state.Settings.Language)
 	turns = append(turns, Turn{Role: "user", Text: next.Content})
 	ctx = context.WithValue(ctx, chatExecutionKey{}, &chatExecution{ProjectID: pid, ConversationID: next.ConversationID, MessageID: next.ID})
 	ctx = context.WithValue(ctx, agentTraceKey{}, next.ID)
@@ -455,7 +455,7 @@ func (s *Service) executeMessage(ctx context.Context, pid string, next Message) 
 		args, _ := json.Marshal(map[string]string{"agentId": target, "task": next.Content})
 		initial = append(initial, ToolCall{ID: id("delegate"), Name: "delegate_agent", Args: args})
 	}
-	system := systemPrompt(*a, p) + skillPrompt(&state)
+	system := systemPrompt(*a, p, state.Settings.Language) + skillPrompt(&state)
 	if next.RetryOf != "" {
 		system += "\nThis is an explicit retry. Earlier tools may have already changed state; read current state before repeating any mutation."
 	}

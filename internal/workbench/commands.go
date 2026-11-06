@@ -96,6 +96,12 @@ func init() {
 		"settings":   {apply: saveSettings},
 		"saveAgent":  {apply: saveAgent},
 		"resetAgent": {apply: resetAgent},
+		// The UI language: agent prompts, and preset instructions not yet customized, follow it.
+		"setLanguage": {apply: func(_ *Service, _ context.Context, st *State, r Request) (any, error) {
+			st.Settings.Language = uiLang(r.Lang)
+			st.Settings.Agents = withPresets(st.Settings.Agents, st.Settings.Language)
+			return nil, nil
+		}},
 	}
 }
 
@@ -305,7 +311,7 @@ func resetAgent(_ *Service, _ context.Context, st *State, r Request) (any, error
 	}
 	for _, p := range presetAgents {
 		if p.ID == a.ID {
-			a.System, a.MaxSteps = p.System, p.MaxSteps
+			a.System, a.MaxSteps = presetSystem(p.ID, st.Settings.Language), p.MaxSteps
 		}
 	}
 	event(st, "", "", "user", "Agent 指令已恢复默认", a.Name)

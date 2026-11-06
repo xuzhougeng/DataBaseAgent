@@ -12,7 +12,7 @@ import (
 )
 
 func TestRequestedSubagents(t *testing.T) {
-	state := State{Settings: Settings{Agents: withPresets(nil)}}
+	state := State{Settings: Settings{Agents: withPresets(nil, "")}}
 	for _, tc := range []struct {
 		message, legacy string
 		want            []string

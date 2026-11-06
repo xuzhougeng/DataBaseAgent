@@ -191,8 +191,8 @@ func TestAgentFailureKeepsCompletedWritesAndTrace(t *testing.T) {
 
 func TestPresetMigrationKeepsCustomizations(t *testing.T) {
 	stored := []Agent{{ID: "assistant", System: legacyAgentSystems["assistant"], MaxSteps: 6, ModelID: "saved-model"}, {ID: "scout", System: "custom prompt", MaxSteps: 3}}
-	agents := withPresets(stored)
-	if agents[0].System != presetAgents[0].System || agents[0].MaxSteps != 20 || agents[0].ModelID != "saved-model" || len(agents[0].Tools) != len(tools) {
+	agents := withPresets(stored, "")
+	if agents[0].System != presetSystem("assistant", "zh") || agents[0].MaxSteps != 20 || agents[0].ModelID != "saved-model" || len(agents[0].Tools) != len(tools) {
 		t.Fatal("old defaults did not adopt executable tools and instructions")
 	}
 	if agents[1].System != "custom prompt" || agents[1].MaxSteps != 3 {

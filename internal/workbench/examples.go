@@ -98,15 +98,6 @@ var loadExamples = sync.OnceValues(func() ([]Example, error) {
 	return catalog.Examples, nil
 })
 
-// exampleLang maps a UI language to the example data language; anything but
-// English is the Chinese original.
-func exampleLang(lang string) string {
-	if lang == "en" {
-		return "en"
-	}
-	return "zh"
-}
-
 // localized returns a copy holding only one language's project fields and file text.
 func (ex Example) localized(lang string) Example {
 	files := make([]exampleFile, len(ex.Files))
@@ -131,7 +122,7 @@ func examplesFor(lang string) ([]Example, error) {
 	}
 	out := make([]Example, len(list))
 	for i := range list {
-		out[i] = list[i].localized(exampleLang(lang))
+		out[i] = list[i].localized(uiLang(lang))
 	}
 	return out, nil
 }
@@ -143,7 +134,7 @@ func exampleByID(id, lang string) (*Example, error) {
 	}
 	for i := range list {
 		if list[i].ID == id {
-			ex := list[i].localized(exampleLang(lang))
+			ex := list[i].localized(uiLang(lang))
 			return &ex, nil
 		}
 	}
@@ -187,13 +178,13 @@ func exampleSite(st *State, ex *Example, preview bool) (*StaticSite, error) {
 }
 
 func createExampleProject(_ *Service, _ context.Context, st *State, r Request) (any, error) {
-	lang := exampleLang(r.Lang)
+	lang := uiLang(r.Lang)
 	ex, err := exampleByID(r.ExampleID, lang)
 	if err != nil {
 		return nil, err
 	}
 	for _, p := range st.Projects {
-		if p.Example == ex.ID && exampleLang(p.ExampleLang) == lang {
+		if p.Example == ex.ID && uiLang(p.ExampleLang) == lang {
 			return map[string]any{"projectId": p.ID, "created": false}, nil
 		}
 	}

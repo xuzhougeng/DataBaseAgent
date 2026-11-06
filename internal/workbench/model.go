@@ -239,6 +239,7 @@ type Settings struct {
 	MaxRetries      int            `json:"maxRetries"`
 	Models          []ModelProfile `json:"models"`
 	Agents          []Agent        `json:"agents"`
+	Language        string         `json:"language,omitempty"` // UI language for agent prompts: "zh" (also when empty) or "en"
 	MCPServers      []MCPServer    `json:"mcpServers"`
 }
 

@@ -58,6 +58,7 @@ async function refresh(force=false){
   try{
     const reply=await loading,signature=lastSignature,wasDisconnected=ui.connectionError;
     db=reply.state;meta=reply;ui.connectionError=false;
+    syncLanguage();
     if(ui.projectId===null)ui.projectId=db.projects[0]?.id||'';
     if(ui.projectId&&!current())ui.projectId='';
     syncChatState();
@@ -66,6 +67,13 @@ async function refresh(force=false){
     if(force||wasDisconnected||signature!==lastState&&!editing){lastState=signature;render();}
   }catch(error){if(!ui.connectionError){ui.connectionError=true;if(ui.page==='agent'&&!ui.chatComposing)render();}throw error;}
   finally{loading=false;}
+}
+// Agent prompts and default role instructions are written in the UI language, so the workspace records it.
+function syncLanguage(){
+  const want=lang==='en'?'en':'zh';
+  if(!db.settings||(db.settings.language||'zh')===want||ui.languageSync===want)return;
+  ui.languageSync=want;
+  request('setLanguage',{lang:want}).then(()=>refresh(true)).catch(()=>{}).finally(()=>{if(ui.languageSync===want)ui.languageSync='';});
 }
 async function act(action,body={},message=t('已保存')){
   if(ui.busy.has(action))return;

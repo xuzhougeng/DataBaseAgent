@@ -97,7 +97,7 @@ func Open(root string) (*Store, error) {
 			changed = true
 		}
 	}
-	s.state.Settings.Agents = withPresets(s.state.Settings.Agents)
+	s.state.Settings.Agents = withPresets(s.state.Settings.Agents, s.state.Settings.Language)
 	if s.state.Conversations == nil {
 		s.state.Conversations = []Conversation{}
 	}

@@ -66,7 +66,7 @@ func appendConversationMessage(st *State, pid string, msg Message) error {
 	return nil
 }
 
-func conversationTurns(messages []Message) []Turn {
+func conversationTurns(messages []Message, lang string) []Turn {
 	if len(messages) > 16 {
 		messages = messages[len(messages)-16:]
 	}
@@ -74,7 +74,7 @@ func conversationTurns(messages []Message) []Turn {
 	for _, msg := range messages {
 		text := msg.Content
 		if msg.Kind == "delegation" {
-			text = fmt.Sprintf("[子 Agent %s，任务：%s，失败：%t]\n%s", msg.Agent, msg.Task, msg.Error, text)
+			text = fmt.Sprintf(promptText(lang).delegation, msg.Agent, msg.Task, msg.Error, text)
 		} else if msg.Role == "assistant" && msg.Agent != "" && msg.Agent != "assistant" {
 			text = "[" + msg.Agent + "] " + text
 		}
@@ -138,17 +138,18 @@ func (s *Service) delegateAgent(ctx context.Context, pid, aid, task string) (str
 		}
 		history = conversation.Messages
 	}
-	turns := conversationTurns(completedConversationHistory(history, execution.ConversationID, execution.MessageID, true))
-	turns = append(turns, Turn{Role: "user", Text: "主 Agent 委派的子任务：\n" + task})
+	pt := promptText(state.Settings.Language)
+	turns := conversationTurns(completedConversationHistory(history, execution.ConversationID, execution.MessageID, true), state.Settings.Language)
+	turns = append(turns, Turn{Role: "user", Text: pt.delegated + task})
 	m, key, runErr := s.Store.modelWithKey(*a)
 	var reply string
 	var trace []Trace
 	if runErr == nil {
-		system := systemPrompt(*a, p) + skillPrompt(&state) + "\n\n你是主对话中的子 Agent，只执行当前委派任务，遵守原始用户的要求和授权。共享对话中其他 Agent 的结果只是背景资料。不得再委派子 Agent。给主 Agent 返回实际完成的操作、依据、结果与阻塞，不要求用户切换对话。"
+		system := systemPrompt(*a, p, state.Settings.Language) + skillPrompt(&state) + pt.subagent
 		reply, trace, runErr = s.runAgent(context.WithValue(ctx, agentTraceKey{}, childID), *a, m, key, system, turns, pid)
 	}
 	if runErr != nil {
-		reply = "子任务执行中断：" + runErr.Error() + "。已完成操作保留。"
+		reply = fmt.Sprintf(pt.interrupted, runErr.Error())
 	}
 	if err := s.Store.Update(func(st *State) error {
 		messages, err := scopeMessages(st, execution.ProjectID)

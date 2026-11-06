@@ -325,7 +325,7 @@ const ZH={
 "Builds a static card library from existing papers, tutorials or academic resource lists, for searching by title and reading summaries.":"将已有文献、教程或学术资源列表构建为静态卡片式资源库，适合按标题搜索和阅读摘要。"
 };
 const t=(s,v={})=>((lang==='en'?EN[s]:ZH[s])||s).replace(/\{(\w+)\}/g,(m,k)=>k in v?v[k]:m);
-function setLang(l){lang=l;try{localStorage.setItem('dba-lang',l)}catch{}document.documentElement.lang=l==='en'?'en':'zh-CN';document.title=t('DBA · 数据库构建工作台');render();}
+function setLang(l){lang=l;try{localStorage.setItem('dba-lang',l)}catch{}document.documentElement.lang=l==='en'?'en':'zh-CN';document.title=t('DBA · 数据库构建工作台');render();if(typeof syncLanguage==='function')syncLanguage();}
 EN['DBA · 数据库构建工作台']='DBA · Database Workbench';
 EN['收起 Agent 面板']='Collapse agent panel';EN['展开 Agent 面板']='Expand agent panel';
 document.documentElement.lang=lang==='en'?'en':'zh-CN';document.title=t('DBA · 数据库构建工作台');
