@@ -131,6 +131,9 @@ func (s *Service) loginMCPServer(ctx context.Context, r Request) (any, error) {
 	if r.APIKey != nil {
 		secret = strings.TrimSpace(*r.APIKey)
 	}
+	// The consent page runs inside the initial connect, so the user's clicking
+	// time must fit the startup timeout; fetch below enforces its own 5 minutes.
+	v.StartupTimeoutSec = 300
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, err
@@ -153,20 +156,26 @@ func (s *Service) loginMCPServer(ctx context.Context, r Request) (any, error) {
 	})}
 	go func() { _ = server.Serve(listener) }()
 	defer server.Close()
+	var fetchErr error
 	fetch := func(ctx context.Context, args *auth.AuthorizationArgs) (*auth.AuthorizationResult, error) {
 		if err := openBrowser(args.URL); err != nil {
-			return nil, fmt.Errorf("无法打开浏览器：%v", err)
+			fetchErr = fmt.Errorf("无法打开浏览器：%v", err)
+			return nil, fetchErr
 		}
 		select {
 		case res := <-results:
 			return res, nil
 		case <-ctx.Done():
-			return nil, errors.New("登录已取消")
+			fetchErr = errors.New("登录已取消")
 		case <-time.After(5 * time.Minute):
-			return nil, errors.New("登录超时，请重试")
+			fetchErr = errors.New("登录超时，请重试")
 		}
+		return nil, fetchErr
 	}
 	c, err := s.connectMCPOAuth(ctx, v, secret, redirect, fetch)
+	if fetchErr != nil {
+		return nil, fetchErr
+	}
 	if err != nil {
 		return nil, loginError(err)
 	}

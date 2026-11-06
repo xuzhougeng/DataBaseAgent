@@ -457,6 +457,7 @@ func TestMCPOAuthLogin(t *testing.T) {
 			return errors.New("unexpected authorization URL " + link)
 		}
 		go func() {
+			time.Sleep(1200 * time.Millisecond) // the user outlives the 1 s connect timeout saved below
 			res, err := http.Get(u.Query().Get("redirect_uri") + "?code=abc&state=" + url.QueryEscape(u.Query().Get("state")))
 			if err == nil {
 				res.Body.Close()
@@ -465,7 +466,7 @@ func TestMCPOAuthLogin(t *testing.T) {
 		return nil
 	}
 	t.Cleanup(func() { openBrowser = openURL })
-	v := saveTestMCP(t, s, MCPServer{Name: "oauth", Transport: "http", URL: remote.URL, Enabled: true})
+	v := saveTestMCP(t, s, MCPServer{Name: "oauth", Transport: "http", URL: remote.URL, Enabled: true, StartupTimeoutSec: 1})
 	body, _ := json.Marshal(Request{MCPServerID: v.ID})
 	out, err := s.Dispatch(context.Background(), "loginMCPServer", body)
 	if err != nil || !strings.Contains(string(out.(json.RawMessage)), `"signedIn":true`) || browser.Load() != 1 {

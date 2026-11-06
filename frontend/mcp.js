@@ -53,24 +53,26 @@ function saveMCP(){
     if(reply)mcpModal(reply.result.mcpServerId);
   });
 }
+// While a test or sign-in runs, every control in the dialog is disabled and closeModal() refuses, so the request cannot be abandoned by accident.
+function mcpBusy(on){mcpTesting=on;document.querySelectorAll('.mcp-modal button').forEach(b=>b.disabled=on);const back=document.querySelector('.modal-backdrop');if(back)back.dataset.locked=on?'1':'';}
 function testMCP(){
   if(mcpTesting)return;
   const sid=mcpEditingId,sequence=++mcpTestSequence;
   const result=document.getElementById('mcp-test-result');if(!sid||!result)return;
-  mcpTesting=true;result.textContent=t('正在连接并读取工具列表…');
+  mcpBusy(true);result.textContent=t('正在连接并读取工具列表…');
   run(async()=>{
     try{
       const reply=await request('testMCPServer',{mcpServerId:sid});
       if(sequence===mcpTestSequence&&result.isConnected)result.innerHTML=`<p>${esc(t('连接成功，可用工具 {n} 个',{n:reply.result.toolCount}))}</p>${code(reply.result.tools.join('\n'))}`;
     }catch(error){if(sequence===mcpTestSequence&&result.isConnected)result.textContent=error.message;}
-    finally{if(sequence===mcpTestSequence)mcpTesting=false;}
+    finally{if(sequence===mcpTestSequence)mcpBusy(false);}
   });
 }
 function loginMCP(){
   if(mcpTesting)return;
   const sid=mcpEditingId,sequence=++mcpTestSequence,secret=val('mcp-client-secret');
   const result=document.getElementById('mcp-test-result');if(!sid||!result)return;
-  mcpTesting=true;result.textContent=t('正在连接服务并打开浏览器授权页面，完成授权后会自动返回…');
+  mcpBusy(true);result.textContent=t('正在连接服务并打开浏览器授权页面，完成授权后会自动返回…');
   run(async()=>{
     try{
       const reply=await request('loginMCPServer',{mcpServerId:sid,apiKey:secret||undefined});
@@ -79,7 +81,7 @@ function loginMCP(){
       mcpModal(sid);mcpTestSequence=sequence;
       document.getElementById('mcp-test-result').innerHTML=`<p>${esc(t(reply.result.signedIn?'登录成功，可用工具 {n} 个':'该服务无需登录，可用工具 {n} 个',{n:reply.result.toolCount}))}</p>${code(reply.result.tools.join('\n'))}`;
     }catch(error){if(sequence===mcpTestSequence&&result.isConnected)result.textContent=error.message;}
-    finally{if(sequence===mcpTestSequence)mcpTesting=false;}
+    finally{if(sequence===mcpTestSequence)mcpBusy(false);}
   });
 }
 function deleteMCP(){
