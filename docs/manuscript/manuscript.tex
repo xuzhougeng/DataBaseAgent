@@ -36,12 +36,12 @@
 \makeatother
 \graphicspath{{./}}
 
-\title{DataBaseAgent: a local desktop workbench for building topic-specific
-biological data repositories with human-gated AI agents}
+\title{DataBaseAgent: a local desktop workbench for building and publishing
+topic-specific biological data repositories with human-gated AI agents}
 \author{Zhougeng Xu \textsuperscript{1,*}, {[}co-author placeholders{]}\\[2pt]
 \textsuperscript{1} {[}institution, city, country{]}\\[2pt]
 {[}email{]}}
-\date{Draft of 5 November 2026}
+\date{Draft of 6 November 2026}
 
 \begin{document}
 \maketitle
@@ -52,44 +52,56 @@ model (LLM) agents can discover, annotate and reprocess public
 sequencing data at a scale manual curation cannot reach. That
 demonstration is a single bespoke repository: its agent, pipeline and
 cloud deployment were engineered for one assay by one institute. Most
-researchers need something smaller and more specific, such as every
-public dataset on their organism, tissue or perturbation of interest,
-processed uniformly with tools they trust, and few have the engineering
-capacity to build it; GPSAdb, a manually curated compendium of 3,048
-human gene-perturbation RNA-seq datasets, is the authors' own instance
-of that need. Here we present DataBaseAgent (DBA), a general-purpose
-desktop workbench that turns the agent-curated repository pattern into a
-tool any researcher can run. DBA ships as one binary for Windows, macOS
-and Linux with no server or database to deploy. A project states its
-topic, organism, assay and inclusion criteria in free text. Candidates
-are gathered from Europe PMC, PubMed or GEO, or imported. An LLM
+researchers need something smaller and more specific, and the need takes
+one of two shapes: a laboratory that already holds a curated table and
+wants it published as a searchable resource, or a laboratory that must
+first gather every public dataset on its organism, tissue or
+perturbation of interest and process it uniformly with tools it trusts.
+GPSAdb, a manually curated compendium of 3,048 human gene-perturbation
+RNA-seq datasets, is the authors' own instance of both. Here we present
+DataBaseAgent (DBA), a general-purpose desktop workbench that turns the
+agent-curated repository pattern into a tool any researcher can run, in
+either shape. DBA ships as one binary for Windows, macOS and Linux with
+no server or database to deploy. A static project starts from a table
+the user already holds: a skill, a SKILL.md file carrying instructions
+for the agents and a declarative page template, shapes the imported CSV,
+TSV or JSON into a standalone searchable web page that is previewed and
+downloaded, and the project assistant can publish it to GitHub Pages or
+Cloudflare Pages through the providers' hosted Model Context Protocol
+(MCP) servers, which DBA reaches as an MCP client with tokens kept in
+the operating system's credential store. A collecting project states its
+topic, organism, assay and inclusion criteria in free text; candidates
+are gathered from Europe PMC, PubMed or GEO, or imported; an LLM
 reviewer proposes include, exclude or uncertain with a verbatim evidence
-snippet that the application verifies against the record; a dataset
+snippet that the application verifies against the record, and a dataset
 enters the repository only through a recorded decision that carries a
-written reason and names who made it. The user writes the processing
-pipeline as ordinary shell steps and locks a version. Jobs run on the
-user's own Linux server over SSH under CPU and concurrency quotas;
+written reason and names who made it; the user writes the processing
+pipeline as ordinary shell steps and locks a version; jobs run on the
+user's own Linux server over SSH under CPU and concurrency quotas,
 network failures are retried a bounded number of times and everything
-else is escalated to the user with the log and a resume point. Outputs
+else is escalated to the user with the log and a resume point; outputs
 are checksummed, manifested and archived locally. One project agent and
 four specialists, each with its own model, instructions and fixed tool
 list, work in a single conversation per project; they act only through
 the same validated commands as the interface, run only when addressed,
-and every call is recorded in the conversation. Any OpenAI-compatible,
-Anthropic or Gemini endpoint, including locally served models, can be
-the model. We present DBA as a design contribution: its workflow and
-architecture, the safeguards around acting agents, two walkthroughs on
-live services, one of which carries a single GPSAdb-style dataset from a
-GEO search through a help request to a checksummed count matrix, and a
-feature comparison with repository-scale curation agents, dataset
-fetchers, screening tools and workflow platforms. Usability and the
+and every call, including every MCP call, is recorded. Any
+OpenAI-compatible, Anthropic or Gemini endpoint, including locally
+served models, can be the model. We present DBA as a design
+contribution: its two workflows and architecture, the skill and MCP
+mechanisms and their boundaries, the safeguards around acting agents,
+two walkthroughs on live services, one of which carries a single
+GPSAdb-style dataset from a GEO search through a help request to a
+checksummed count matrix, and a feature comparison with
+repository-scale curation agents, dataset fetchers, screening tools,
+workflow platforms and static publishing tools. Usability and the
 quality of the repositories users build with it remain to be evaluated.
 DBA is open source at {[}repository URL{]}.
 \end{abstract}
 
 {\small
 \textbf{Keywords:} data curation, AI agents, human-in-the-loop,
-reproducible pipelines, desktop software, sequencing data repositories
+reproducible pipelines, static web publishing, agent skills, Model
+Context Protocol, desktop software, biological databases
 
 \textbf{Preprint status:} draft for bioRxiv (Bioinformatics). Software
 name in the text: DataBaseAgent (DBA). Comparator named in the brief as
@@ -98,10 +110,13 @@ name in the text: DataBaseAgent (DBA). Comparator named in the brief as
 
 \textbf{Draft conventions:} square brackets mark placeholders the
 authors must fill or confirm; every quantitative claim about DBA comes
-from the repository (README, tests, acceptance record and single-dataset
-case record of 5 November 2026, at commit 37104a6) and is cited to it;
-nothing about runtime performance or user studies is claimed because
-none has been measured.
+from the repository (README, tests, acceptance record and single-dataset case record of 5
+November 2026, and the code and tests at commit abf9075 of 6 November
+2026) and is cited to it; nothing about runtime performance or user
+studies is claimed because none has been measured. The static kind of
+project and the MCP client are described from the code and its tests;
+neither has an acceptance run yet, which Table~\ref{tab:claims} and the
+limitations state.
 }
 
 \section{Introduction}\label{introduction}
@@ -164,11 +179,29 @@ is hard. Maintaining it is harder: new datasets keep appearing, the
 pipeline changes, remote jobs fail at night, and the reasons a dataset
 was included are lost in a chat log or a colleague's memory.
 
+A second need sits beside the first and is simpler. Many laboratories
+already hold the curated table that makes a database: GPSAdb's list of
+datasets with their genes and cell lines, a consortium's annotation of a
+genome, a cohort's harmonised phenotypes. What stands between that table
+and a published resource is a website, and most topic-specific
+biological databases are at bottom a table behind search, browse and
+download pages. Building that site still means choosing a framework,
+writing templates, hosting a server and keeping it up; the data owner
+rarely has the time, and the site decays when the student who built it
+leaves. Static hosting on GitHub Pages or Cloudflare Pages removes the
+server {[}35,36{]}, tools such as Datasette show that a table can become
+a browsable site in one command {[}34{]}, and the Model Context Protocol
+(MCP) gives agents a standard way to call such services through servers
+the providers themselves host {[}37,38,39{]}. What is missing is the
+step from a table to the page it needs, stated in a form a laboratory
+can read and change, and a tool in which that step and the collecting
+loop are the same project model.
+
 Here we present DataBaseAgent (DBA), a local desktop workbench that
 packages the agent-curated repository pattern as a general tool. It grew
 out of the need to keep GPSAdb current, and the sample groups it records
 beside each dataset and the shape of its manifests come from that
-database's needs, but nothing in the tool is specific to it. Seven
+database's needs, but nothing in the tool is specific to it. Eight
 design commitments shape it. First, generality by construction: topic,
 organism, assay and inclusion criteria are free text, the pipeline is
 whatever shell commands the user would have typed, and the output
@@ -197,14 +230,21 @@ list, every result carries a manifest and a SHA-256, and a restart
 resumes monitoring where it stopped. Seventh, zero deployment: DBA is
 one binary that stores a JSON file, keeps model keys in the operating
 system's credential store, talks to models over three common protocols,
-and reaches servers with the system SSH client.
+and reaches servers with the system SSH client. Eighth, two kinds of
+project in one workspace: a static project builds a website from a
+table the user already holds, a collecting project gathers the data the
+user still needs, the kind is fixed when the project is created and each
+refuses the other's commands; and in a static project the shape of the
+site comes from a skill, an editable text file, not from code written
+for each database.
 
 We present DBA as a design contribution in the sense used by Rho
 {[}12{]}: Figure 1 states the argument, and the paper describes the
-workflow, the architecture, the safeguards and two walkthroughs, one on
-live search services and one that carries a single dataset end to end,
-and it compares DBA feature by feature with repository-scale curation
-agents, dataset fetchers, screening tools and workflow platforms. It
+two workflows, the architecture, the skill and MCP mechanisms, the
+safeguards and two walkthroughs, one on live search services and one
+that carries a single dataset end to end, and it compares DBA feature by
+feature with repository-scale curation agents, dataset fetchers,
+screening tools, workflow platforms and static publishing tools. It
 does not claim that repositories built with DBA are better than
 hand-built ones, or that the tool is usable without training; both
 remain to be evaluated. The contributions are: (i) a general,
@@ -216,28 +256,128 @@ scheduling and recovery model for unattended remote processing with
 bounded retries and explicit hand-over to a human; and (iv) an
 open-source implementation with an automated test suite covering project
 isolation, review gating, quota enforcement, recovery, archival, tool
-validation and delegation.
+validation and delegation; and (v) a skill mechanism, SKILL.md files
+that carry instructions for the agents and a declarative page template,
+through which agents and users build standalone static sites from
+existing tables, together with an MCP client that places the providers'
+own GitHub and Cloudflare servers behind the project assistant for
+publishing.
 
 \begin{figure}
 \centering
-\pandocbounded{\includegraphics[keepaspectratio,alt={The argument. (A) scBaseCount showed that an agent can discover, annotate and feed a uniform pipeline at repository scale, as a one-off build by one institute {[}1{]}. (B) A laboratory's need is narrower and recurring, and is met today by a chain of tools and a person; GPSAdb is the authors' instance of it {[}32{]}. (C) DBA is the same loop as a tool: general by construction, gated by recorded decisions, sparse in its use of agents, run on the laboratory's own server, and designed to be maintained.}]{figure1-argument.pdf}}
+\pandocbounded{\includegraphics[keepaspectratio,alt={The argument: one demonstration, two laboratory needs, one tool with two kinds of project}]{figure1-argument.pdf}}
 \caption{\textbf{The argument.} (A) scBaseCount showed that an agent can
 discover, annotate and feed a uniform pipeline at repository scale, as a
 one-off build by one institute {[}1{]}. (B) A laboratory's need is
-narrower and recurring, and is met today by a chain of tools and a
-person; GPSAdb is the authors' instance of it {[}32{]}. (C) DBA is the
-same loop as a tool: general by construction, gated by recorded
-decisions, sparse in its use of agents, run on the laboratory's own
-server, and designed to be maintained.}
+narrower and recurring, and it comes in two shapes: a curated table that
+wants a site (B1), met today by a framework, a host and whoever built
+the page; and datasets still to be gathered and processed (B2), met
+today by a chain of tools and a person. GPSAdb is the authors' instance
+of both {[}32{]}. (C) DBA is the same loop as a tool, in two kinds of
+project: static, which turns a table into a one-file site through a
+SKILL template and publishes it through the provider's MCP server, and
+collecting, which runs the loop on the laboratory's own server. In both,
+agents act only through validated, recorded commands and run only when
+asked, and the result is kept maintainable.}
 \end{figure}
 
 \section{Results}\label{results}
 
-\subsection{The DBA workflow: six stages and three gated
+\subsection{Two kinds of project: publish what you have, collect what
+you need}\label{two-kinds}
+
+A DBA project is of one of two kinds, chosen when it is created and
+fixed thereafter (Table~\ref{tab:modes}). A static project starts from
+data the user already holds: one table, pasted or imported as CSV, TSV
+or JSON, and a skill that says what the table must contain and how the
+site should look. Its stages are short: choose a skill, import, build,
+preview, download, and, when the user asks for it, publish through an
+MCP server. A collecting project starts from a question and from public
+archives and runs the six-stage loop of Figure 2; it stops at the
+archive. The two kinds share the workspace, the agents, the
+conversation, the model profiles and the skill catalogue; they differ in
+which pages the interface opens and which commands the service accepts.
+A static project refuses the search, import, review, pipeline and launch
+commands, a collecting project refuses the site build, and a workspace
+from an earlier release gains the distinction without data loss because
+its projects are marked as collecting on first open. Carrying a
+collected archive into a static project is today a manual step, an
+export of the archive's table and an import into a new project; a direct
+bridge is future work.
+
+The gates differ with the kind. A collecting project cannot queue a
+dataset that was not accepted with a reason. A static project cannot
+build until the imported table carries the columns the skill requires, a
+failed build leaves the previous site untouched, and nothing it builds
+leaves the machine until the user instructs the project assistant to
+publish it, with credentials the user configured beforehand. What
+differs is what a wrong decision costs: a wrong inclusion costs compute
+and pollutes an archive; a wrong deployment is public, and DBA records
+it in the trace but, in this release, asks nothing further.
+
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.2000}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.4000}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.4000}}@{}}
+\caption{\label{tab:modes}\textbf{Two kinds of project.} Entries
+describe the release at commit abf9075; the walkthroughs of
+Table~\ref{tab:walkthroughs} exercise the collecting kind only.}\tabularnewline
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Static project
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Collecting project
+\end{minipage} \\
+\midrule\noalign{}
+\endfirsthead
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Static project
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Collecting project
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Starts from & one table the user holds, as CSV, TSV or JSON (at most 2
+MB, 5,000 rows, 100 columns), and a skill & a topic, inclusion criteria
+in prose and the public archives \\
+Stages & choose a skill, import, build, preview, download; publish
+through an MCP server on instruction & define, search, review, pipeline,
+run, archive (Figure 2) \\
+What a skill contributes & instructions to the agents and a declarative
+template: layout (table or cards), required columns, title column,
+accent colour & instructions only, when invoked; no template \\
+Where work runs & the desktop: parsing, checks and rendering in one
+transaction & the user's Linux server over SSH \\
+External services & GitHub's or Cloudflare's hosted MCP server, only when
+the user asks for publication & Europe PMC, PubMed, GEO; model
+endpoints \\
+Gates & the kind is fixed at creation; required columns are checked
+before a build replaces the previous one; publication only on the user's
+instruction, with credentials the user configured & accept with a
+reason; lock a version; resume a handed-over job \\
+What is kept & the site with a snapshot of its template and data and its
+build time; every MCP call in the conversation trace & a run manifest
+per job with the decision, the sample groups, the pipeline version and
+every output's digest \\
+Agents & the project assistant alone builds the site and calls MCP
+tools; every agent can read skills & the assistant and the four
+specialists \\
+Commands refused & search, import, review, pipeline, launch & site
+build \\
+GPSAdb as the case & the published dataset table as a searchable site
+{[}not yet run{]} & the next update from GEO, as in the single-dataset
+case of Table~\ref{tab:walkthroughs} \\
+\end{longtable}
+
+\subsection{The collecting workflow: six stages and three gated
 decisions}\label{the-dba-workflow-six-stages-and-three-gated-decisions}
 
-DBA organises work as projects, and a project is one repository under
-construction. It holds a topic, an organism, an assay, inclusion
+A collecting project holds a topic, an organism, an assay, inclusion
 criteria written as prose, the search expressions tried and their
 sources, the candidate list with its review record, a pipeline draft
 with its locked versions, and one conversation shared by the project
@@ -313,16 +453,97 @@ maintained rather than merely built.
 
 \begin{figure}
 \centering
-\pandocbounded{\includegraphics[keepaspectratio,alt={The DBA workflow. Six stages take a project from a topic statement to an archived, manifested result. The three tinted stages end in a decision the application never takes on its own: accepting a candidate with a written reason, locking a pipeline version, and resuming a job the scheduler handed over. The dashed return shows how a repository is maintained: new searches merge into the same candidate list, a new pipeline version applies to new datasets, and a failed job resumes from its recorded state.}]{figure2-workflow.pdf}}
-\caption{\textbf{The DBA workflow.} Six stages take a project from a
-topic statement to an archived, manifested result. The three tinted
-stages end in a decision the application never takes on its own:
-accepting a candidate with a written reason, locking a pipeline version,
-and resuming a job the scheduler handed over. The dashed return shows
-how a repository is maintained: new searches merge into the same
-candidate list, a new pipeline version applies to new datasets, and a
-failed job resumes from its recorded state.}
+\pandocbounded{\includegraphics[keepaspectratio,alt={The two workflows: a static project in one row, a collecting project in two rows, with the tinted stages waiting for a person}]{figure2-workflow.pdf}}
+\caption{\textbf{The two workflows.} The upper row is a static project: a skill
+is chosen, one table is imported and checked against the skill's
+required columns, a single HTML file is built with the data embedded and
+no network access, previewed in a sandboxed frame and downloaded; the
+tinted last stage, publication through GitHub's or Cloudflare's MCP
+server with the user's own token, happens only on the user's
+instruction. The lower rows are a collecting project: six stages take it
+from a topic statement to an archived, manifested result, and the three
+tinted stages end in a decision the application never takes on its own,
+accepting a candidate with a written reason and author, locking a
+pipeline version, and resuming a job the scheduler handed over. The
+dashed return shows how a collected repository is maintained: new
+searches merge into the same candidate list, a new pipeline version
+applies to new datasets, a failed job resumes from its recorded state.
+The dashed link from the archive to the static import is a manual
+export and import in this release.}
 \end{figure}
+
+\subsection{The static workflow: a skill chosen for the data, publication
+through MCP}\label{static-workflow}
+
+A skill is a text file, SKILL.md, in the format used by agent skills
+elsewhere: a YAML front matter with a name, a description and, for DBA,
+a metadata block that declares a page template, followed by instructions
+in prose. The template is declarative: a label, a layout (a searchable
+table or a grid of cards), an accent colour, the columns the table must
+contain and, for cards, the column that becomes each card's heading. It
+can declare nothing else, no HTML, no script, no asset and no tool, so a
+skill cannot widen what an agent may do. Two skills ship with DBA: a
+research catalogue, a table with id and title columns for dataset
+registries, and a literature library, cards with title and summary
+columns for reading lists and resources. Users import their own, up to
+fifty per workspace and each at most 12 KB, and enable, disable or
+delete them on a skill templates page. The catalogue lives in the
+workspace file, and a site keeps a snapshot of the template it was built
+with, so disabling or deleting a skill changes nothing already built;
+the next build needs an enabled skill. Every agent sees the names and
+descriptions of the enabled skills in its prompt and can read one in
+full on demand; the user invokes a skill by name, with a dollar sign, or
+describes the data and lets the project assistant pick the skill whose
+description matches. The instructions say what the table must contain,
+what to do when columns are named differently, and never to invent
+records.
+
+Given a skill and a table, the project assistant, or the user on the
+static website page, builds the site. The service parses the table (CSV
+and TSV take their first row as headers; JSON is an array of objects
+whose keys become the sorted columns), checks that the skill's required
+columns are present, and stores the site, all in one transaction, so a
+failed build leaves the previous site in place. The result is one HTML
+file with the data embedded: a header with the title, the description
+and the record count, a search box, and the table or the cards; a fixed
+script filters records in the browser; every cell is escaped by Go's
+HTML templating; and a content security policy in the page forbids
+network requests and external assets, so the page runs offline and
+carries no code but DBA's own. The interface previews the page in a
+sandboxed frame and downloads it as a single file. Building does not
+publish.
+
+Publication goes through MCP. DBA is an MCP client built on the official
+Go SDK {[}40{]}, and it ships two presets, GitHub's hosted server and
+Cloudflare's hosted server {[}38,39{]}; both arrive enabled but inert
+until the user supplies a token, either in preferences, from where it
+goes to the operating system's credential store, or as a named
+environment variable set before launch. Other servers can be added over
+Streamable HTTP, which must be HTTPS except on the loopback interface,
+or as a local executable started without a shell and given only the
+environment variables the user names. A connection test lists a
+server's tools without running any. Three workspace tools belong to the
+project assistant alone: list the configured servers and whether each
+has what it needs to connect; list a server's tools with their schemas,
+on demand and paged; and call one tool by its own name with JSON
+arguments. Specialists have none of them. A connection is opened when
+first needed in a turn and closed when the turn ends; redirects are
+refused, so a token cannot be sent elsewhere; responses are bounded; the
+token and any named variable are redacted from everything the model
+sees; a server's error result is recorded as a failed call; and nothing
+is retried automatically, because a timed-out write may have happened.
+The assistant's instructions say when to reach for MCP and that a
+server's descriptions, instructions and results are untrusted and do
+not widen the user's authorisation. Publishing a site to GitHub Pages or
+Cloudflare Pages is therefore an instructed sequence of such calls, each
+kept in the conversation trace with its arguments, result, duration and
+status. Which tools the servers offer for it is the provider's choice:
+on 6 November 2026 GitHub's hosted server was documented as covering
+repositories and Cloudflare's as covering its whole API, and neither
+names Pages {[}38,39{]}, so whether a deployment reaches Pages is the
+user's configuration to verify {[}add the tool sequence once a
+deployment has been run{]}. DBA does not yet record a deployment as a
+distinct, approved event; the limitations say so.
 
 \subsection{Sparse agents}\label{sparse-agents}
 
@@ -385,21 +606,25 @@ and English locale switch. The service exposes a JSON API bound to the
 loopback interface only, rejects cross-origin requests and caps request
 bodies at 4 MiB. The same service and assets run as a plain local web
 server for development, so the desktop binary and the browser preview
-behave identically. Eleven pages map onto the workflow: the AI
-assistant, which is the default entry point, then projects, overview,
-topic and search, review, pipeline, jobs, servers, data and outputs,
-agent centre and preferences.
+behave identically. Thirteen pages map onto the two workflows: the AI assistant, which is
+the default entry point, then projects, static website, skill
+templates, overview, topic and search, review, pipeline, jobs, servers,
+data and outputs, agent centre and preferences.
 
 \begin{figure}
 \centering
-\pandocbounded{\includegraphics[keepaspectratio,alt={Architecture. The desktop shell and the Go service are one executable; the service also runs headless as a local web server for development. Five components inside the service talk to three kinds of external system. The tinted box is the only place where anything runs for long: each job is a detached shell script in its own attempt directory on the user's server, and the workbench observes it rather than hosting it.}]{figure3-architecture.pdf}}
-\caption{\textbf{Architecture.} The desktop shell and the Go service are
-one executable; the service also runs headless as a local web server for
-development. Five components inside the service talk to three kinds of
-external system. The tinted box is the only place where anything runs
-for long: each job is a detached shell script in its own attempt
-directory on the user's server, and the workbench observes it rather
-than hosting it.}
+\pandocbounded{\includegraphics[keepaspectratio,alt={Architecture: desktop shell, seven service components, four kinds of external system}]{figure3-architecture.pdf}}
+\caption{\textbf{Architecture.} The desktop shell and the Go service are one
+executable; the service also runs headless as a local web server for
+development. Seven components inside the service talk to four kinds of
+external system: the discovery adapters to literature and data APIs, the
+agent loop to model endpoints, the MCP client to the providers' hosted
+MCP servers or a local one, and the SSH executor to the user's server.
+The skill catalogue and site builder talk to nothing outside; the site
+they produce is previewed in the shell. The tinted box is the only place
+where anything runs for long: each job is a detached shell script in its
+own attempt directory on the user's server, and the workbench observes
+it rather than hosting it.}
 \end{figure}
 
 \textbf{Store.} All state is one JSON document per workspace. Every
@@ -410,7 +635,9 @@ refused rather than overwritten. The event log is capped at 2,000
 entries; conversations are kept whole. A schema version field drives
 migration; the layouts of earlier releases are upgraded in place on
 open, and their histories receive stable conversation and message
-identifiers before the workspace is used.
+identifiers before the workspace is used. A workspace from before the
+static kind receives, once, the two shipped skills, the two MCP presets
+and the collecting kind for its existing projects.
 
 \textbf{Discovery adapters.} Europe PMC is paged with cursor marks at
 100 records per page; PubMed and GEO use Entrez esearch followed by
@@ -421,7 +648,7 @@ on normalised title, DOI and accession, and each search records its hit
 count, fetched count, added count and timestamp.
 
 \textbf{Agents.} One project assistant and four specialists share one
-tool-calling loop (Table 1). Each agent is a system prompt, a fixed list
+tool-calling loop (Table~\ref{tab:agents}). Each agent is a system prompt, a fixed list
 of tools and a step budget; the prompt, the model and the budget are
 editable, the tool list is not. Tools are of two kinds. Read tools
 return a snapshot of the current project; candidate, job and artefact
@@ -457,19 +684,22 @@ request for an explanation does not authorise a change, and that
 uncertain decisions are to be left pending. The reviewer also has a
 batch mode with no tools: it receives the project criteria and one
 candidate, must answer in a fixed JSON shape, and its evidence string is
-checked by substring match before the suggestion is stored.
+checked by substring match before the suggestion is stored. Every agent
+can also list and read the enabled skills; the project assistant alone
+holds the static-site and MCP tools described above.
 
 \begin{longtable}[]{@{}
   >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2500}}
   >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2500}}
   >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2500}}
   >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2500}}@{}}
-\caption{\textbf{Agents.} Tool names are abbreviated; read tools stand
+\caption{\label{tab:agents}\textbf{Agents.} Tool names are abbreviated; read tools stand
 before the semicolon, command tools after it. Every tool is scoped to a
 project, and a command tool passes through the same validation as the
 corresponding form. Budgets are defaults and can be set between 1 and
 20. Each agent carries its own model profile; the project assistant is
-the only agent that can delegate.}\tabularnewline
+the only agent that can delegate, build a static site or call an MCP
+tool. Every agent can list and read enabled skills.}\tabularnewline
 \toprule\noalign{}
 \begin{minipage}[b]{\linewidth}\raggedright
 Agent
@@ -497,7 +727,8 @@ Step budget
 \bottomrule\noalign{}
 \endlastfoot
 Project assistant & Carry a goal through the workflow; delegate to
-specialists & the complete catalogue, read and command & 20 \\
+specialists & the complete catalogue, read and command, plus the skill,
+static-site and MCP tools & 20 \\
 Search strategist & Save the search strategy, run searches, import
 candidates & project, searches, candidates; update project, search,
 import & 12 \\
@@ -578,7 +809,7 @@ pipeline is locked and the candidate was accepted by a recorded decision
 with a reason; sample groups, when given, must name at least two samples
 in at least two groups.
 
-\textbf{Tests.} The package ships thirty-two test functions run with the
+\textbf{Tests.} The package ships forty-eight test functions run with the
 race detector. Thirteen cover the first release: project isolation and
 immutability of running jobs, bounded recovery without resubmission on
 poll failure, restart resuming observation without resubmission, resumed
@@ -603,14 +834,23 @@ resumed; failure, retry and scope validation; independent project queues
 and the waiting limit; a dropped HTTP connection not cancelling
 execution; a queued delegation keeping its context and trace with its
 parent; and migration of earlier histories with recovery after a crash.
-The scheduler tests use a controlled executor; live search services and
+Sixteen cover skills, static sites and MCP: the skill life cycle and
+agent access; malformed instructions and templates refused; project
+kinds and template snapshots; data validation and atomic rebuild;
+preview and download over HTTP; a legacy workspace gaining the
+collecting kind and the shipped skills once; MCP defaults, migration and
+deletion; credentials and rollback; discovery and calls over HTTP;
+timeout and refused redirect; a STDIO helper and a STDIO server's life
+cycle; the agent-loop trace; result redaction that preserves JSON;
+configuration validation; and the bridge across the three model
+protocols. The scheduler tests use a controlled executor; live search services and
 a real SSH host are exercised only in the walkthroughs below, and real
 model endpoints not at all in this release.
 
 \subsection{What makes the design
 checkable}\label{what-makes-the-design-checkable}
 
-The design would be prose if nothing enforced its distinctions. Table 2
+The design would be prose if nothing enforced its distinctions. Table~\ref{tab:claims}
 pairs each load-bearing claim of this paper with the mechanism in the
 code that enforces it and with the evidence offered here, a named test
 or a fact from the walkthrough; ``design'' marks a claim the present
@@ -620,10 +860,9 @@ evidence does not exercise.
   >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
   >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
   >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}@{}}
-\caption{\textbf{The argument and how it is checked.} Tests are the
-thirty-two functions of the package test suite, run with the race
-detector; W and C steps refer to the two walkthroughs in Table
-3.}\tabularnewline
+\caption{\label{tab:claims}\textbf{The argument and how it is checked.} Tests are the
+forty-eight functions of the package test suite, run with the race
+detector; W and C steps refer to the two walkthroughs in Table~\ref{tab:walkthroughs}.}\tabularnewline
 \toprule\noalign{}
 \begin{minipage}[b]{\linewidth}\raggedright
 Load-bearing claim
@@ -696,6 +935,27 @@ tests \\
 A closed laptop does not stop a job & Detached script under nohup, exit
 code written on the server, monitoring resumes on reopen & design; the
 case ran on a loopback host with the application open throughout \\
+A static project cannot search, review or run; a collecting project
+cannot build a site & The kind is fixed at creation; the service refuses
+the other kind's commands before dispatch & Project-kinds and
+template-snapshot test \\
+A generated site carries no code but DBA's own & Declarative template
+fields only; HTML escaping of every cell; a content security policy that
+forbids network requests and external assets; one fixed search script &
+Data-validation and atomic-rebuild test; preview and download test \\
+A built site survives changes to its skill & The template snapshot is
+stored with the site; the next build needs an enabled skill &
+Project-kinds and template-snapshot test \\
+An MCP server receives only what the user configured & Token from the
+credential store or a named variable; HTTPS only off loopback; redirects
+refused; allow and deny lists checked at each call; secrets redacted from
+results & MCP credentials-and-rollback, timeout-and-redirect,
+configuration-validation and discovery-and-calls tests \\
+Only the project assistant reaches MCP & The three bridge tools are
+workspace tools of the assistant; a specialist's call is refused &
+MCP agent-loop trace test; skill life-cycle and agent-access test \\
+A deployment is approved as such & none; publication is an instructed
+call recorded in the trace & design; not in this release \\
 \end{longtable}
 
 \subsection{Two walkthroughs on live
@@ -715,7 +975,7 @@ two-step pipeline, a job dispatched by OpenSSH to a loopback macOS host,
 a deliberately withheld sample-group assignment to provoke a help
 request, and an archived count matrix {[}repository folder
 docs/manuscript/gpsadb-case{]}. Both runs are observational. Figure 5
-shows the overview page at the end of the first, and Table 3 lists the
+shows the overview page at the end of the first, and Table~\ref{tab:walkthroughs} lists the
 steps of both against the stages of Figure 2 and states, for each, what
 the interface exposed and what it does not show.
 
@@ -725,7 +985,7 @@ the interface exposed and what it does not show.
   >{\raggedright\arraybackslash}p{(\linewidth - 8\tabcolsep) * \real{0.2000}}
   >{\raggedright\arraybackslash}p{(\linewidth - 8\tabcolsep) * \real{0.2000}}
   >{\raggedright\arraybackslash}p{(\linewidth - 8\tabcolsep) * \real{0.2000}}@{}}
-\caption{\textbf{The two walkthroughs: what each step exposed and what
+\caption{\label{tab:walkthroughs}\textbf{The two walkthroughs: what each step exposed and what
 it does not show.} W steps are the acceptance run; C steps are the
 single-dataset case. Counts are those recorded in the event log and the
 run evidence at the time of each run; the case's digests are in the
@@ -890,7 +1150,7 @@ well-resourced institute builds once, and DBA is what lets a laboratory
 build its own, smaller, differently scoped version without that
 institute's engineering.
 
-Table 4 widens the comparison to four groups of existing tools:
+Table~\ref{tab:features} widens the comparison to four groups of existing tools:
 agent-curated or uniformly reprocessed repositories, dataset discovery
 and fetching utilities, literature and dataset screening tools, and
 workflow execution platforms. No single existing tool spans discovery,
@@ -913,7 +1173,7 @@ or two of the stages in Figure 2.
   >{\raggedright\arraybackslash}p{(\linewidth - 22\tabcolsep) * \real{0.0833}}
   >{\raggedright\arraybackslash}p{(\linewidth - 22\tabcolsep) * \real{0.0833}}
   >{\raggedright\arraybackslash}p{(\linewidth - 22\tabcolsep) * \real{0.0833}}@{}}
-\caption{\textbf{Feature comparison.} Groups: A, agent-curated or
+\caption{\label{tab:features}\textbf{Feature comparison.} Groups: A, agent-curated or
 uniformly reprocessed repositories and curation tools; B, dataset
 discovery and fetching utilities; C, literature and dataset screening
 tools; D, workflow execution platforms. Y, yes; N, no; P, partial; n/a,
@@ -1057,7 +1317,7 @@ cluster, cloud & P, retries, no hand-over & n.r. & none & Y \\
 
 \endlandscape
 
-Table 5 reads the same comparison the other way round: for the closest
+Table~\ref{tab:closest} reads the same comparison the other way round: for the closest
 work, what it already provides and what this paper adds. Where a
 preceding system already provides a mechanism, this paper does not claim
 it.
@@ -1066,9 +1326,9 @@ it.
   >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
   >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
   >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}@{}}
-\caption{\textbf{The closest work placed against this paper's question.}
+\caption{\label{tab:closest}\textbf{The closest work placed against this paper's question.}
 Each cell reports what the source's documentation or paper explicitly
-describes; ``not reported'' in Table 4 is a literature boundary, not a
+describes; ``not reported'' in Table~\ref{tab:features} is a literature boundary, not a
 claim of impossibility.}\tabularnewline
 \toprule\noalign{}
 \begin{minipage}[b]{\linewidth}\raggedright
@@ -1120,6 +1380,13 @@ Agentic metadata curators {[}29,30,31{]} & LLM curation of GEO metadata
 at repository scale, in one case with triage for human review & Curation
 tied to the decision, the processing and the archive, in a desktop tool
 rather than a pipeline \\
+Static data publishing: Datasette, GitHub Pages, Cloudflare Pages
+{[}34,35,36{]} & Serving a table as a browsable site with an API; free
+static hosting with version control and a deployment interface & A
+skill as an editable text file that fixes a site's columns and layout; a
+standalone page with no code but the tool's own; publication delegated
+to the providers' hosted MCP servers from the conversation that built
+the site \\
 \end{longtable}
 
 \section{Discussion}\label{discussion}
@@ -1173,6 +1440,23 @@ the output list, and merge-on-search mean that a repository can be
 extended next year by the same project without re-deciding what was
 decided.
 
+Two further decisions concern the static kind. Skills are text, for the
+same reason the pipeline is shell: a laboratory can read what a skill
+requires and builds, change it, and share it, and a skill for a new kind
+of table is a file to write rather than a feature to request; the MCP
+specification now carries an extension for skills discovered through a
+server {[}37{]}, which would let a community publish skills the way it
+publishes pipelines. The cost is a small vocabulary: a table or cards
+over one table, with no record pages, no joins and no computation at
+request time, which is enough for a registry or a reading list and not
+for a database whose site answers queries. Delegating publication to the
+providers' hosted MCP servers keeps DBA out of the credential path and
+out of the business of tracking two hosting interfaces, at the price of
+depending on servers DBA does not control and of a gate that is, in this
+release, the user's instruction and the trace rather than a recorded
+approval of a named build; the site itself, its template snapshot and
+the trace are what remain under DBA's own enforcement.
+
 Using shell steps as the pipeline language is a deliberate trade. It is
 the lowest barrier, since every bioinformatician already has the
 commands, and the most general, since any tool, container or workflow
@@ -1213,6 +1497,12 @@ Several observations would defeat the contribution as stated:
   If a researcher who does not program cannot complete a project without
   help, the usability claim fails; no observation of this has yet been
   made.
+\item
+  If the sites laboratories need cannot be expressed as a table or a
+  card grid over one table, the template vocabulary is too small and a
+  skill becomes a request for code; and if publication through a hosted
+  MCP server needs an approval record that DBA does not keep, the trace
+  is bookkeeping rather than a gate.
 \end{itemize}
 
 These criteria also name the work needed: build a repository end to end
@@ -1234,11 +1524,27 @@ message can still mislead the person reading it. State in one JSON file
 is simple to back up and inspect but will not scale to a repository of
 millions of candidates. Finally, a tool that runs on the user's own
 server inherits that server's reliability, and DBA's recovery model
-assumes the server comes back; it does not provide an alternative.
+assumes the server comes back; it does not provide an alternative. The
+static kind adds two dependencies outside the application: the hosting
+provider's limits, which on 6 November 2026 were a 1 GB site, a soft 100
+GB of monthly bandwidth and 10 builds per hour for GitHub Pages
+{[}35{]}, and 20,000 files of at most 25 MiB each and 500 builds per
+month on Cloudflare's free plan {[}36{]}; and the provider's MCP server,
+whose tools can change underneath DBA. An instructed assistant can
+deploy; DBA records the call but asks nothing further.
 
 \subsection{Limitations}\label{limitations}
 
-This is a first release and its boundaries are explicit. The executor
+This is a first release and its boundaries are explicit. A static
+project builds one single-page site over one table of at most 5,000
+rows, in one of two layouts; several tables, record pages, custom
+templates and assets are not provided. Publication is an MCP call made
+on the user's instruction and recorded in the trace, without a dedicated
+approval record, and neither a static site nor an MCP call has been
+exercised outside the test suite {[}an acceptance run of the static kind
+and one real deployment are to be added{]}. The collecting kind stops at
+the archive, and moving an archive into a static project is a manual
+export and import. The executor
 supports Linux-style hosts over SSH only; Slurm or other schedulers,
 containers, memory and disk quotas, and cancellation or deletion of
 remote jobs are not provided, and the CPU quota governs admission rather
@@ -1261,7 +1567,12 @@ decision but does not undo one.
 
 \subsection{Future work}\label{future-work}
 
-The immediate steps follow from the limitations: a Slurm executor and a
+The immediate steps follow from the limitations: a recorded approval
+and a manifest for each deployment; a bridge from a collecting
+project's archive to a static project; record pages and several tables
+in the template vocabulary; the first published site, GPSAdb's dataset
+table through the research-catalogue skill, which would make the two
+kinds meet on the authors' own database; a Slurm executor and a
 container-aware step runner; ENA, ArrayExpress and SRA metadata as
 built-in sources; full-text retrieval for evidence; and an evaluation
 that uses GPSAdb's manually curated membership as the reference and
@@ -1283,9 +1594,10 @@ a DBA repository be published as a resource in its own right {[}18{]}.
 
 \subsection{Implementation}\label{implementation}
 
-DBA is written in Go 1.26 and has two direct dependencies, Wails v3.1.0
-{[}19{]} and a small library that reads and writes the operating
-system's credential store. The front end is plain HTML, CSS and
+DBA is written in Go 1.26 and has four direct dependencies: Wails
+v3.1.0 {[}19{]}, the official MCP Go SDK {[}40{]}, a small library that
+reads and writes the operating system's credential store, and a YAML
+parser for skill files. The front end is plain HTML, CSS and
 JavaScript embedded in the binary with Go's embed facility and served by
 the same handler that serves the JSON API, so the desktop window and a
 development browser session see identical behaviour. The handler binds
@@ -1311,8 +1623,7 @@ use}\label{installation-and-first-use}
 
 Release builds target all three platforms from one machine, Windows as a
 pure-Go target and macOS or Linux through Wails' pure-Go backend when
-cross-compiling, and the installers need no administrator rights (Table
-6). The workspace is a folder in the user's configuration directory,
+cross-compiling, and the installers need no administrator rights (Table~\ref{tab:dist}). The workspace is a folder in the user's configuration directory,
 selectable with a flag, and one desktop instance runs per workspace.
 
 \begin{longtable}[]{@{}
@@ -1320,11 +1631,10 @@ selectable with a flag, and one desktop instance runs per workspace.
   >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2500}}
   >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2500}}
   >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2500}}@{}}
-\caption{\textbf{Distribution.} Sizes are the unsigned builds of 5
+\caption{\label{tab:dist}\textbf{Distribution.} Sizes are the unsigned builds of 5
 November 2026 {[}re-measure at the release build; the desktop icon was
-added afterwards{]}. At the commit described here the Go backend is
-3,952 lines, its tests 1,489 lines and the front end 1,136 lines of
-HTML, CSS and JavaScript.}\tabularnewline
+added afterwards{]}. At the commit described here the Go backend is 5,005 lines, its tests 2,113 lines and the front end
+1,386 lines of HTML, CSS and JavaScript.}\tabularnewline
 \toprule\noalign{}
 \begin{minipage}[b]{\linewidth}\raggedright
 Platform
@@ -1374,8 +1684,8 @@ or inherit the first.
 
 A workspace is a directory holding \texttt{workbench.json} and
 \texttt{projects/\textless{}project\textgreater{}/results/\textless{}job\textgreater{}/}.
-The JSON document contains projects, servers, jobs, artefacts,
-conversations, events and settings under a schema version. Writes
+The JSON document contains projects, servers, jobs, artefacts, conversations, skills, events and
+settings, including the MCP server records, under a schema version. Writes
 serialise the whole document to a temporary file in the same directory,
 fsync it and rename it over the previous file. The event list is trimmed
 to the latest 2,000 entries; conversations are not trimmed. Each
@@ -1521,16 +1831,78 @@ limited to 100 GiB. Output names must be relative, contain only letters,
 digits, dot, underscore, dash and slash, and contain no empty, dot or
 dot-dot components.
 
+\subsection{Skills}\label{skills}
+
+A SKILL.md is UTF-8 text of at most 12,000 bytes: a front matter
+delimited by lines of three dashes with name (1 to 64 lower-case
+letters, digits and hyphens), description (at most 1,024 bytes) and an
+optional metadata.dba block with label (at most 120 bytes), layout
+(table or cards), accent (a six-digit hexadecimal colour, default
+\#237c63), required-columns (at most 100 distinct names, checked for
+presence only) and title-column (required for cards; when given, it
+must exist in the input); the body after the front matter must not be
+empty. A file without the metadata block is an ordinary instruction
+skill and does not appear in the template selector. An import is
+refused for a malformed front matter, a duplicate name or a fifty-first
+skill. The two shipped skills are installed once into a workspace that
+has no skills field; an emptied list stays empty. Enabled skills appear
+in every agent's prompt as name and description; the read tool returns
+the full file and the parsed template with a result limit of 80,000
+bytes, so a skill is never truncated; the list and read tools are added
+to every specialist's tool list.
+
+\subsection{Static sites and MCP}\label{static-sites-and-mcp}
+
+The build command takes a skill identifier, a title (at most 200 bytes),
+a description (at most 4,000 bytes), a format and the data; it belongs
+to the project assistant only and to static projects only. The parser
+refuses data over 2 MB or not UTF-8, more than 5,000 rows or 100
+columns, ragged CSV rows, empty or duplicate column names, and JSON that
+is not an array of objects; nulls become empty cells and nested JSON is
+kept as text. The template check runs in the same store transaction as
+the save. The page is rendered with Go's html/template from one fixed
+template; its content security policy allows inline styles and the
+inline search script and nothing else; the search script lowercases each
+record's text once and hides records that do not contain the query. The
+site endpoint renders the saved snapshot and, with a download flag,
+serves it as an attachment; the preview frame is sandboxed.
+
+An MCP server record holds a name, a transport (Streamable HTTP or
+STDIO), a URL or a command with arguments and named environment
+variables, an enabled flag, an optional bearer-token variable name or
+credential reference, a startup timeout (default 20 s, at most 120 s), a
+tool timeout (default 60 s, at most 600 s) and optional allow and deny
+lists, of which the deny list wins. An HTTP URL may carry no query,
+fragment or credentials and must be HTTPS off loopback; the HTTP client
+sends the bearer token, refuses redirects and caps bodies at 8 MiB and
+server-sent events at 4 MiB. A STDIO server is started in the workspace
+directory with an environment of basic system, locale and proxy
+variables plus the named ones. Tool listing follows cursors for at most
+100 pages and 1,000 allowed tools. The tool-listing tool returns at
+most 20 tools per call with the server's instructions clipped to 4,000
+characters; the call tool requires a listed tool and an object of
+arguments; results are redacted of secrets, marked failed when the
+server sets its error flag, and truncated above 16,000 bytes. A
+connection is reused within one agent turn and closed after it; a
+connection test uses its own session. A token saved in preferences goes
+to the credential store under a reference that the state API never
+returns; changing a server's URL while a token is saved requires the
+token to be re-entered or removed.
+
 \subsection{Tests}\label{tests}
 
-The test suite contains thirty-two functions and runs under the race
+The test suite contains forty-eight functions and runs under the race
 detector in about six seconds; a separate Node test script covers the
 conversation front end. Scheduling tests substitute a controlled
 executor that scripts probe, start, poll and sync outcomes; model tests
 substitute an HTTP test server that returns fixed responses for each
 protocol, including scripted tool calls and delegations; discovery tests
 substitute HTTP responses for the three sources; credential tests use
-the keyring library's in-memory mock.
+the keyring library's in-memory mock. MCP tests run Streamable HTTP,
+server-sent-event and STDIO servers inside the test process, including
+through the full agent loop under all three model protocols; skill and
+site tests build sites from CSV, TSV and JSON and fetch the preview and
+the download over the API.
 
 \section{Data and code availability}\label{data-and-code-availability}
 
@@ -1546,7 +1918,8 @@ under docs/manuscript/gpsadb-case/. No new biological data were
 generated; the two Europe PMC records retrieved in the first walkthrough
 are public literature records, and the count matrix archived in the case
 is a standardised copy of the submitter-provided table of GEO series
-GSE299540.
+GSE299540. The two shipped skills are in the repository under
+internal/workbench/skills/.
 
 \section{Author contributions}\label{author-contributions}
 
@@ -1765,6 +2138,41 @@ resource's own citation page.
   Database Commons (2026). GPSAdb, record 8508, last update 25 August
   2022. \url{https://ngdc.cncb.ac.cn/databasecommons/database/id/8508}
   (accessed 5 November 2026).
+\end{enumerate}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{33}
+\tightlist
+\item
+  Willison, S. (2026). Datasette: a tool for exploring and publishing
+  data. \url{https://datasette.io} (accessed 6 November 2026).
+\item
+  GitHub, Inc. (2026). GitHub Pages documentation: usage limits.
+  \url{https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits}
+  (accessed 6 November 2026).
+\item
+  Cloudflare, Inc. (2026). Cloudflare Pages documentation: limits.
+  \url{https://developers.cloudflare.com/pages/platform/limits/}
+  (accessed 6 November 2026).
+\item
+  Model Context Protocol contributors (2026). Model Context Protocol
+  specification, revision 2026-07-28.
+  \url{https://modelcontextprotocol.io/specification/latest} (accessed 6
+  November 2026).
+\item
+  GitHub, Inc. (2026). GitHub MCP Server: remote server.
+  \url{https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md}
+  (accessed 6 November 2026).
+\item
+  Cloudflare, Inc. (2026). Cloudflare's own MCP servers.
+  \url{https://developers.cloudflare.com/agents/model-context-protocol/cloudflare/servers-for-cloudflare/}
+  (accessed 6 November 2026).
+\item
+  Model Context Protocol contributors (2026). The official Go SDK for
+  Model Context Protocol servers and clients, version 1.8.0.
+  \url{https://github.com/modelcontextprotocol/go-sdk} (accessed 6
+  November 2026).
 \end{enumerate}
 
 \end{document}
