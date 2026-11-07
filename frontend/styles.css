@@ -544,4 +544,5 @@ td.empty{padding:32px}
 .site-actions{flex-wrap:wrap;gap:12px}
 .site-actions>.muted{flex:1 0 100%}
 .site-actions .button{flex-shrink:0}
+.mcp-guide{background:#f6f8f7;border-radius:8px;padding:10px 14px}.mcp-guide ol{margin:4px 0 10px;padding-left:20px}.mcp-guide li{margin:3px 0;line-height:1.6}
 .mcp-auth{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 6px}

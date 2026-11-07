@@ -42,11 +42,10 @@ minutes. Agent runs never open a browser: an expired or revoked session fails
 with a message asking you to sign in again in Preferences.
 
 Servers without dynamic client registration, such as the remote GitHub MCP
-server, need a client you registered yourself. Create a GitHub OAuth App (or
-GitHub App) with callback URL `http://127.0.0.1/callback` (GitHub ignores the
-port for loopback addresses), then enter its client ID under **Advanced
-authentication**. Enter the client secret only when signing in; it is stored
-with the session in the credential store, never in workspace JSON.
+server, need a client you registered yourself; see [GitHub setup](#github-setup).
+**Sign in with browser** saves the form first, so a newly entered client ID is
+used. Enter the client secret only when signing in; it is stored with the
+session in the credential store, never in workspace JSON.
 
 The session (client registration plus tokens) is one entry in the operating
 system credential store. Workspace JSON holds only a reference, which state
@@ -61,6 +60,36 @@ A saved sign-in or token takes precedence over an environment variable. To use
 an unauthenticated HTTP server, clear the saved credential and the variable name.
 Changing a server URL while retaining a saved credential requires explicitly
 removing it first, so a token is never sent to a different endpoint.
+
+## GitHub setup
+
+GitHub has no one-click sign-in. The GitHub plugin dialog shows these steps.
+
+**Option 1: personal access token (recommended)**
+
+1. Open [new fine-grained token](https://github.com/settings/personal-access-tokens/new).
+   Use any name and pick an expiration.
+2. Under **Repository access**, choose the repositories the assistant may use.
+   Under **Permissions**, grant Contents, Issues, Pull requests and others as
+   needed; read-only is enough for lookups.
+3. Select **Generate token** and copy the token starting with `github_pat_`.
+4. Paste it into **Bearer Token** in the GitHub plugin dialog and save.
+
+**Option 2: OAuth App (browser sign-in)**
+
+1. Open [new OAuth App](https://github.com/settings/applications/new). Use any
+   name; set **Homepage URL** to `http://127.0.0.1`.
+2. Set **Authorization callback URL** to `http://127.0.0.1/callback` (GitHub
+   accepts any port on a loopback callback), leave **Enable Device Flow**
+   unchecked, and register the application.
+3. Copy the **Client ID**, then generate and copy a **Client secret**; GitHub
+   shows it once.
+4. In the GitHub plugin dialog, open **Advanced authentication**, enter both
+   values, select **Sign in with browser**, and approve on GitHub.
+
+An OAuth App requests every scope the GitHub MCP server declares, including
+write access to private repositories. Use a fine-grained token for read-only
+access.
 
 ## Custom servers
 

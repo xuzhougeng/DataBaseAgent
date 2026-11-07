@@ -12,15 +12,16 @@ function mcpSettings(){
 function mcpModal(sid){
   const v=mcpServers().find(x=>x.id===sid)||{transport:'http',enabled:true,startupTimeoutSec:20,toolTimeoutSec:60};
   mcpEditingId=v.id||'';mcpTestSequence++;mcpTesting=false;
-  const auth=meta.mcpAuth?.[v.id]||'';
+  const auth=meta.mcpAuth?.[v.id]||'',gh=/github/i.test(v.url||'');
   modal(t(v.id?'配置 MCP 插件':'添加 MCP 插件'),`<form id="mcp-form" onsubmit="event.preventDefault();saveMCP()">
     ${field(t('插件名称'),'mcp-name',v.name||'','input','required maxlength="120"')}
     <div class="form-grid"><div class="field"><label for="mcp-transport">${t('传输方式')}</label><select id="mcp-transport" onchange="updateMCPTransport()"><option value="http" ${v.transport==='http'?'selected':''}>Streamable HTTP</option><option value="stdio" ${v.transport==='stdio'?'selected':''}>STDIO</option></select></div><label class="mcp-enable"><input type="checkbox" id="mcp-enabled" ${v.enabled?'checked':''}> ${t('启用插件')}</label></div>
     <div id="mcp-http">${field(t('MCP 服务地址'),'mcp-url',v.url||'','input','type="url"')}
       <div class="field"><label>${t('认证')}</label>
         <p class="mcp-auth">${auth==='oauth'?badge(t('已通过浏览器登录')):auth==='token'?badge(t('已保存 Token'),'blue'):badge(t('未认证'),'gray')} ${v.id?btn(t(auth==='oauth'?'重新登录':'浏览器登录'),'loginMCP()','small','arrow'):`<span class="muted">${t('保存后即可使用浏览器登录')}</span>`}</p>
-        <p class="muted">${t('推荐浏览器登录：在浏览器中授权，无需手动复制 Token。服务不支持登录时，改为填写下方 Token。')}</p>
+        <p class="muted">${t(gh?'GitHub 不支持一键登录，请按下方教程使用 PAT 或自建 OAuth App。':'推荐浏览器登录：在浏览器中授权，无需手动复制 Token。服务不支持登录时，改为填写下方 Token。')}</p>
       </div>
+      ${gh?mcpGitHubGuide(!auth):''}
       ${field(t('Bearer Token（备选）'),'mcp-token','','input','type="password" autocomplete="new-password" spellcheck="false"')}
       <p class="muted">${t(auth?'留空保持当前认证；填写新 Token 会替换已保存的登录或 Token。':'GitHub 填写 PAT，Cloudflare 填写 API Token。Token 存入系统凭据库。')}</p>
       ${auth?`<label class="muted"><input type="checkbox" id="mcp-clear-token" onchange="document.getElementById('mcp-token').disabled=this.checked"> ${t(auth==='oauth'?'退出登录（移除已保存的登录）':'移除已保存的 Token')}</label>`:''}
@@ -46,10 +47,29 @@ function updateMCPTransport(){
   document.getElementById('mcp-command').required=!http;
 }
 function mcpLines(id){return val(id).split('\n').map(s=>s.trim()).filter(Boolean);}
+// GitHub has no dynamic client registration, so its dialog carries the PAT and OAuth App setup steps.
+function mcpGitHubGuide(open){
+  const li=items=>`<ol>${items.map(x=>`<li>${x}</li>`).join('')}</ol>`,a=(href,s)=>`<a href="${href}">${t(s)}</a>`;
+  return `<details class="mcp-guide" ${open?'open':''}><summary>${t('GitHub 接入教程')}</summary>
+    <p><strong>${t('方式一：PAT（推荐，最快）')}</strong></p>${li([
+      a('https://github.com/settings/personal-access-tokens/new','打开 GitHub 创建细粒度 PAT 页面')+t('，Token name 任意，选择有效期。'),
+      t('Repository access 选择允许访问的仓库；Permissions 按需授予 Contents、Issues、Pull requests 等权限，只查询时选只读。'),
+      t('点 Generate token，复制以 github_pat_ 开头的 Token。'),
+      t('粘贴到下方「Bearer Token（备选）」，点「保存」。')])}
+    <p><strong>${t('方式二：OAuth App（浏览器登录，免复制 Token）')}</strong></p>${li([
+      a('https://github.com/settings/applications/new','打开 GitHub 创建 OAuth App 页面')+t('，Application name 任意，Homepage URL 填 http://127.0.0.1。'),
+      t('Authorization callback URL 填 http://127.0.0.1/callback，不勾选 Enable Device Flow，点 Register application。'),
+      t('复制 Client ID；点 Generate a new client secret，复制 Client Secret（只显示一次）。'),
+      t('展开下方「高级认证」，填入 Client ID 和 Client Secret，点上方「浏览器登录」，在 GitHub 页面点 Authorize。')])}
+    <p class="muted">${t('OAuth App 会申请 GitHub MCP 声明的全部权限，包括私有仓库读写；只需只读时请用 PAT。')}</p>
+  </details>`;
+}
+function mcpFormServer(){
+  return {id:mcpEditingId,name:val('mcp-name'),transport:val('mcp-transport'),enabled:document.getElementById('mcp-enabled').checked,url:val('mcp-url'),command:val('mcp-command'),args:mcpLines('mcp-args'),envVars:mcpLines('mcp-env'),bearerTokenEnv:val('mcp-token-env'),oauthClientId:val('mcp-client-id'),startupTimeoutSec:Number(val('mcp-startup')),toolTimeoutSec:Number(val('mcp-timeout')),enabledTools:mcpLines('mcp-allow'),disabledTools:mcpLines('mcp-deny')};
+}
 function saveMCP(){
   if(!document.getElementById('mcp-form').reportValidity())return;
-  const token=val('mcp-token'),clear=document.getElementById('mcp-clear-token')?.checked;
-  const mcpServer={id:mcpEditingId,name:val('mcp-name'),transport:val('mcp-transport'),enabled:document.getElementById('mcp-enabled').checked,url:val('mcp-url'),command:val('mcp-command'),args:mcpLines('mcp-args'),envVars:mcpLines('mcp-env'),bearerTokenEnv:val('mcp-token-env'),oauthClientId:val('mcp-client-id'),startupTimeoutSec:Number(val('mcp-startup')),toolTimeoutSec:Number(val('mcp-timeout')),enabledTools:mcpLines('mcp-allow'),disabledTools:mcpLines('mcp-deny')};
+  const token=val('mcp-token'),clear=document.getElementById('mcp-clear-token')?.checked,mcpServer=mcpFormServer();
   run(async()=>{
     const reply=await act('saveMCPServer',{mcpServer,apiKey:mcpServer.transport==='http'?(clear?'':token||undefined):''},'MCP 插件配置已保存');
     if(!reply)return;
@@ -75,12 +95,13 @@ function testMCP(){
   });
 }
 function loginMCP(){
-  if(mcpTesting)return;
+  if(mcpTesting||!document.getElementById('mcp-form').reportValidity())return;
   const sid=mcpEditingId,sequence=++mcpTestSequence,secret=val('mcp-client-secret');
   const result=document.getElementById('mcp-test-result');if(!sid||!result)return;
   mcpBusy(true);result.textContent=t('正在连接服务并打开浏览器授权页面，完成授权后会自动返回…');
   run(async()=>{
     try{
+      await request('saveMCPServer',{mcpServer:mcpFormServer()}); // no apiKey: the saved credential is kept
       const reply=await request('loginMCPServer',{mcpServerId:sid,apiKey:secret||undefined});
       await refresh(true);
       if(sequence!==mcpTestSequence)return;
@@ -92,7 +113,6 @@ function loginMCP(){
       // ponytail: matches the server's "needs a Client ID" advice by text; give it an error code if more cases appear.
       if(!error.message.includes('Client ID'))return;
       const id=document.getElementById('mcp-client-id');id.closest('details').open=true;id.focus();
-      if(val('mcp-url').includes('github'))result.innerHTML=`<p>${esc(error.message)}</p><p><a href="https://github.com/settings/applications/new">${t('创建 GitHub OAuth App')}</a> · <a href="https://github.com/settings/personal-access-tokens/new">${t('创建 GitHub PAT')}</a></p>`;
     }
     finally{if(sequence===mcpTestSequence)mcpBusy(false);}
   });
