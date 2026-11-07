@@ -5,18 +5,30 @@ import "time"
 const SchemaVersion = 3
 
 type State struct {
-	Skills          []Skill         `json:"skills"`
-	Schema          int             `json:"schema"`
-	Projects        []Project       `json:"projects"`
-	Servers         []Server        `json:"servers"`
-	Jobs            []Job           `json:"jobs"`
-	Artifacts       []Artifact      `json:"artifacts"`
-	Events          []Event         `json:"events"`
-	Messages        []Message       `json:"messages,omitempty"` // workspace conversation, before a project is selected
-	Conversations   []Conversation  `json:"conversations"`
-	ChatQueuePaused map[string]bool `json:"chatQueuePaused"`
-	Settings        Settings        `json:"settings"`
-	LastTick        string          `json:"lastTick"`
+	Skills          []Skill          `json:"skills"`
+	Schema          int              `json:"schema"`
+	Projects        []Project        `json:"projects"`
+	DeletedProjects []DeletedProject `json:"deletedProjects,omitempty"`
+	Servers         []Server         `json:"servers"`
+	Jobs            []Job            `json:"jobs"`
+	Artifacts       []Artifact       `json:"artifacts"`
+	Events          []Event          `json:"events"`
+	Messages        []Message        `json:"messages,omitempty"` // workspace conversation, before a project is selected
+	Conversations   []Conversation   `json:"conversations"`
+	ChatQueuePaused map[string]bool  `json:"chatQueuePaused"`
+	Settings        Settings         `json:"settings"`
+	LastTick        string           `json:"lastTick"`
+}
+
+// Deleted projects retain their local files and complete state for restoration.
+type DeletedProject struct {
+	Project         Project        `json:"project"`
+	Jobs            []Job          `json:"jobs"`
+	Artifacts       []Artifact     `json:"artifacts"`
+	Events          []Event        `json:"events"`
+	Conversations   []Conversation `json:"conversations"`
+	ChatQueuePaused bool           `json:"chatQueuePaused"`
+	DeletedAt       string         `json:"deletedAt"`
 }
 
 type Project struct {

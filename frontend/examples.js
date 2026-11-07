@@ -93,7 +93,7 @@ function exampleCandidates(text){
 
 function confirmExampleProject(id){
   const ex=exampleById(id);if(!ex)return;
-  modal(t('创建示例项目'),`<p>${t('将在工作空间新建项目“{n}”，并载入示例数据。',{n:esc(ex.project.name)})}</p><p class="muted">${t(ex.mode==='static'?'网站会直接生成；之后可在静态网站页修改数据并重新生成。':'候选记录导入后为待复核，可在“数据复核”页逐条判断。')}</p><p class="muted">${t('当前版本不能删除项目。之后再点这个示例，会打开同一个项目。')}</p>`,btn(t('创建并打开'),`createExampleProject('${ex.id}')`,'primary','plus'));
+  modal(t('创建示例项目'),`<p>${t('将在工作空间新建项目“{n}”，并载入示例数据。',{n:esc(ex.project.name)})}</p><p class="muted">${t(ex.mode==='static'?'网站会直接生成；之后可在静态网站页修改数据并重新生成。':'候选记录导入后为待复核，可在“数据复核”页逐条判断。')}</p><p class="muted">${t('可在“所有项目 → 管理项目”中删除或恢复项目。再次打开此示例时，优先使用已有项目。')}</p>`,btn(t('创建并打开'),`createExampleProject('${ex.id}')`,'primary','plus'));
 }
 function createExampleProject(id){
   run(async()=>{const r=(await act('createExampleProject',{exampleId:id,lang:exampleDataLang()},'')).result;closeModal();toast(t(r.created?'示例项目已创建':'已打开现有的示例项目'));selectProject(r.projectId);});

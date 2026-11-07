@@ -36,6 +36,8 @@ func getJSON(ctx context.Context, raw string, out any) error {
 }
 
 func (s *Service) Search(ctx context.Context, r Request) (any, error) {
+	s.projectMu.RLock()
+	defer s.projectMu.RUnlock()
 	if !s.searchMu.TryLock() {
 		return nil, errors.New("已有检索进行中，请等待完成")
 	}

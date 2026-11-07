@@ -74,6 +74,7 @@ func init() {
 		"openURL":        {run: func(_ *Service, _ context.Context, r Request) (any, error) { return nil, openURL(r.URL) }},
 		"saveModel":      {run: (*Service).saveModel},
 		"deleteModel":    {run: (*Service).deleteModel},
+		"deleteProject":  {run: (*Service).deleteProject},
 
 		// State-only actions: one transaction each.
 		"importSkill":      skill("importSkill"),
@@ -83,6 +84,7 @@ func init() {
 		"importSiteData":   {apply: importSiteData},
 		"buildCustomSite":  {apply: buildCustomSite},
 		"createProject":    {apply: createProject},
+		"restoreProject":   {apply: restoreProject},
 		"saveProject":      {apply: saveProject},
 		"importCandidates": {collect: true, apply: importCandidates},
 		"review":           {collect: true, apply: reviewCandidate},

@@ -56,6 +56,8 @@ scripts/build.sh dmg
 
 默认工作空间：Windows `%APPDATA%\DataBaseAgent`，macOS `~/Library/Application Support/DataBaseAgent`，Linux `~/.config/DataBaseAgent`，保存 `workbench.json` 与 `projects/<项目ID>/results/<任务ID>/`。用 `-workspace <目录>` 指定其他目录，macOS 为 `open bin/DBA.app --args -workspace <目录>`。同一工作空间的桌面实例复用现有窗口。
 
+在「所有项目 → 管理项目」中，可确认删除项目，将项目及关联记录移入回收站；通过「回收站 → 恢复项目」恢复。删除不会清理本地或远程文件，也不会停止远程进程。存在未完成任务（包括排队、重试、同步或需要协助）、未完成 AI 消息，或工作空间仍在执行 AI、检索、复核操作时，删除会被拒绝。回收站随工作空间保存，重启后仍可恢复。
+
 浏览器开发预览使用同一个后端和同一套静态资源，任何平台都不需要 C 工具链：
 
 ```bash
