@@ -86,7 +86,14 @@ function loginMCP(){
       if(sequence!==mcpTestSequence)return;
       mcpModal(sid);mcpTestSequence=sequence;
       document.getElementById('mcp-test-result').innerHTML=`<p>${esc(t(reply.result.signedIn?'登录成功，可用工具 {n} 个':'该服务无需登录，可用工具 {n} 个',{n:reply.result.toolCount}))}</p>${code(reply.result.tools.join('\n'))}`;
-    }catch(error){if(sequence===mcpTestSequence&&result.isConnected)result.textContent=error.message;}
+    }catch(error){
+      if(sequence!==mcpTestSequence||!result.isConnected)return;
+      result.textContent=error.message;
+      // ponytail: matches the server's "needs a Client ID" advice by text; give it an error code if more cases appear.
+      if(!error.message.includes('Client ID'))return;
+      const id=document.getElementById('mcp-client-id');id.closest('details').open=true;id.focus();
+      if(val('mcp-url').includes('github'))result.innerHTML=`<p>${esc(error.message)}</p><p><a href="https://github.com/settings/applications/new">${t('创建 GitHub OAuth App')}</a> · <a href="https://github.com/settings/personal-access-tokens/new">${t('创建 GitHub PAT')}</a></p>`;
+    }
     finally{if(sequence===mcpTestSequence)mcpBusy(false);}
   });
 }
