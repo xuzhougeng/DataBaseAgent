@@ -19,6 +19,7 @@ type Service struct {
 	Runner       Executor
 	tickMu       sync.Mutex
 	searchMu     sync.Mutex
+	projectMu    sync.RWMutex // deletion must not race long-running search/review calls
 	opMu         sync.Mutex
 	agentMu      sync.Mutex
 	agentRuns    map[string]AgentRun

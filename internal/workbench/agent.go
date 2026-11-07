@@ -459,6 +459,8 @@ func systemPrompt(a Agent, p *Project, lang string) string {
 
 // AgentReview is the batch, structured-output path of the reviewer agent (no tools; evidence is verified locally).
 func (s *Service) AgentReview(ctx context.Context, pid, cid string) error {
+	s.projectMu.RLock()
+	defer s.projectMu.RUnlock()
 	state := s.Store.Snapshot()
 	p, e := projectByID(&state, pid)
 	if e != nil {

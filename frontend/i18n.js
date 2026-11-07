@@ -2,6 +2,17 @@
 // ponytail: Chinese source string is the key; missing English entries fall back to Chinese.
 let lang=(()=>{try{return localStorage.getItem('dba-lang')}catch{}})()||(navigator.language.startsWith('zh')?'zh':'en');
 const EN={
+"管理项目":"Manage projects",
+"删除项目":"Delete project",
+"恢复项目":"Restore project",
+"回收站":"Trash",
+"回收站为空":"Trash is empty",
+"项目已移入回收站":"Project moved to trash",
+"项目已恢复":"Project restored",
+"删除的项目会移入回收站，可随时恢复。未完成任务或 AI 消息会阻止删除。":"Deleted projects move to Trash and can be restored. Unfinished jobs or AI messages prevent deletion.",
+"将项目“{n}”移入回收站？":"Move project “{n}” to Trash?",
+"项目及关联记录将从工作列表移除；本地和远程文件保留，可在回收站恢复。":"The project and its records will be removed from active lists. Local and remote files are kept; restore the project from Trash.",
+"可在“所有项目 → 管理项目”中删除或恢复项目。再次打开此示例时，优先使用已有项目。":"Delete or restore projects under All projects → Manage projects. Opening this example again uses an existing project when available.",
 "固定模板（可选）":"Fixed template (optional)",
 "使用 Agent 自主设计时无需选择固定模板。先导入并保存数据，再让 Agent 设计网站。":"Agent design does not require a fixed template. Import and save your data, then let the Agent design the website.",
 "保存数据供 Agent 建站":"Save data for Agent design",

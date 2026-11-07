@@ -120,14 +120,14 @@ test('MCP settings escape plugin data and distinguish configuration from connect
   const html=f.eval('settingsPage()');
   assert.ok(html.includes('GitHub &lt;img'));
   assert.ok(!html.includes('<img'));
-  assert.ok(html.includes('Token required'));
+  assert.ok(html.includes('Sign in or set a token'));
   assert.ok(html.includes('Not tested'));
   assert.ok(html.includes('mcpModal(\'cloudflare\')'));
 });
 
 test('MCP editor keeps tokens blank and exposes both transports and tool filters',()=>{
   const f=fixture();
-  f.eval(`db.settings.mcpServers=[{id:'github',name:'GitHub',transport:'http',url:'https://api.githubcopilot.com/mcp/',enabled:true,startupTimeoutSec:20,toolTimeoutSec:60,enabledTools:['get_me'],disabledTools:['delete_repo']}];meta.mcpKeySaved={github:true};this.captured='';modal=(title,body,footer)=>{this.captured=body+footer};updateMCPTransport=()=>{};document.getElementById=()=>({focus:()=>{}});mcpModal('github');`);
+  f.eval(`db.settings.mcpServers=[{id:'github',name:'GitHub',transport:'http',url:'https://api.githubcopilot.com/mcp/',enabled:true,startupTimeoutSec:20,toolTimeoutSec:60,enabledTools:['get_me'],disabledTools:['delete_repo']}];meta.mcpAuth={github:'token'};this.captured='';modal=(title,body,footer)=>{this.captured=body+footer};updateMCPTransport=()=>{};document.getElementById=()=>({focus:()=>{}});mcpModal('github');`);
   const html=f.eval('captured');
   assert.match(html,/id="mcp-token" value="" type="password"/);
   assert.ok(html.includes('value="stdio"'));
@@ -135,7 +135,44 @@ test('MCP editor keeps tokens blank and exposes both transports and tool filters
   assert.ok(html.includes('delete_repo'));
   assert.ok(html.includes('Remove saved token'));
   assert.ok(html.includes('Test connection'));
-  assert.ok(html.includes('browser OAuth sign-in is not included'));
+  assert.ok(html.includes('GitHub has no one-click sign-in'));
+  assert.ok(html.includes('Sign in with browser'));
+  assert.match(html,/id="mcp-client-secret" value="" type="password"/);
+});
+
+test('MCP authentication states expose the correct sign-in and removal controls',()=>{
+  const f=fixture();
+  f.eval(`db.settings.mcpServers=[{id:'cloudflare',name:'Cloudflare',transport:'http',url:'https://mcp.cloudflare.com/mcp',enabled:true}];meta.mcpStates={cloudflare:'configured'};modal=(title,body,footer)=>{this.captured=body+footer};updateMCPTransport=()=>{};document.getElementById=()=>({focus:()=>{}});`);
+  for(const [auth,badge,removal] of [['','Not tested',null],['token','Token set','Remove saved token'],['oauth','Signed in','Sign out (remove the saved sign-in)']]){
+    f.ctx.auth=auth;
+    f.eval(`meta.mcpAuth={cloudflare:auth};mcpModal('cloudflare');`);
+    assert.ok(f.eval(`mcpCardBadge('cloudflare')`).includes(badge));
+    const html=f.eval('captured');
+    assert.match(html,/id="mcp-token" value="" type="password"/);
+    assert.match(html,/id="mcp-client-secret" value="" type="password"/);
+    assert.equal(html.includes('id="mcp-clear-token"'),Boolean(removal));
+    if(removal)assert.ok(html.includes(removal));
+    if(auth==='oauth')assert.ok(html.includes('Signed in with browser'));
+  }
+  f.eval(`meta.mcpStates.cloudflare='disabled'`);
+  assert.ok(f.eval(`mcpCardBadge('cloudflare')`).includes('Disabled'));
+});
+
+test('project deletion requires a confirmation dialog and trash offers restoration',()=>{
+  const f=fixture();
+  f.eval(`db.projects=[{id:'p',name:'Demo <img src=x>'}];modal=(title,body,footer)=>{this.captured=body+footer};deleteProjectModal('p');`);
+  let html=f.eval('captured');
+  assert.ok(html.includes('Demo &lt;img src=x&gt;'));
+  assert.ok(!html.includes('<img'));
+  assert.ok(html.includes('confirmDeleteProject(\'p\')'));
+  assert.ok(html.includes('Local and remote files are kept'));
+  assert.equal(f.eval('db.projects.length'),1);
+  f.eval(`db.deletedProjects=[{project:{id:'p',name:'Demo <img src=x>'},deletedAt:'2026-11-07T00:00:00Z'}];projectTrash();`);
+  html=f.eval('captured');
+  assert.ok(html.includes('restoreProject(\'p\')'));
+  assert.ok(!html.includes('<img'));
+  f.eval(`db.deletedProjects=[];projectTrash();`);
+  assert.ok(f.eval('captured').includes('Trash is empty'));
 });
 
 test('project mode routes to the correct page and omits collection controls for static data',()=>{

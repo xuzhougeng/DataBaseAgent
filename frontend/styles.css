@@ -45,7 +45,7 @@ main{overflow-y:auto;padding:28px 32px 48px;min-width:0}
 .version{font-size:11px;color:#8e9d94;padding:10px 10px 0;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 8px}
 
 /* 页面头与基础控件 */
-.page-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:22px}
+.page-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:22px}
 .page-head h1{font-size:20px;font-weight:600;letter-spacing:-.3px}
 .page-head p{color:var(--muted);margin-top:5px;max-width:720px}
 .actions{display:flex;flex-wrap:wrap;gap:8px;flex-shrink:0}
@@ -104,6 +104,8 @@ main{overflow-y:auto;padding:28px 32px 48px;min-width:0}
 .grid-projects{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
 .project-card{text-align:left;background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:20px;display:flex;flex-direction:column;gap:10px;transition:.15s}
 .project-card:hover{border-color:#b9cfc1}
+.project-management-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.project-management-row>div,.project-management-row>strong{min-width:0;flex:1}
 .project-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
 .project-card h2{font-size:15px;font-weight:600;line-height:1.5}
 .project-card p{color:var(--muted);font-size:12px;line-height:1.7;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;flex-shrink:0}
@@ -149,12 +151,15 @@ td.url{min-width:16rem}
 td.empty{padding:32px}
 
 /* 数据复核 */
-.review-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,1.1fr);gap:16px;align-items:start}
-.candidate-list{max-height:calc(100vh - 170px);overflow-y:auto}
+/* Stack the list above the detail form when the main pane cannot fit both,
+   including when the work-progress sidebar is expanded. */
+.review-layout{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px;align-items:start}
+.review-layout>.card{min-width:0}
+.candidate-list{min-width:0;max-height:calc(100vh - 170px);overflow-y:auto}
 .paper{display:block;width:100%;text-align:left;border:1px solid #e4ebe3;border-radius:7px;background:#fff;margin-bottom:8px;padding:12px 14px}
 .paper:hover{border-color:#b9cfc1}
 .paper.selected{border-color:#6fa386;background:#f5f9f5}
-.paper-top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px;color:var(--muted)}
+.paper-top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;font-size:11px;color:var(--muted);overflow-wrap:anywhere}
 .paper h3{font-size:12px;line-height:1.6;margin:7px 0 4px;font-weight:500;overflow-wrap:anywhere}
 .paper small{font-size:11px;color:var(--muted)}
 .detail-title{font-size:15px;line-height:1.6;font-weight:500;margin-bottom:6px;overflow-wrap:anywhere}

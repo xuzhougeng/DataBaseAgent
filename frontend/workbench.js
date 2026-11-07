@@ -225,8 +225,22 @@ function aside(p){
     </aside>`;
 }
 function allProjects(){
-  return head(t('所有项目'),t('{p} 个项目 · {s} 台服务器 · {j} 个任务运行中',{p:db.projects.length,s:db.servers.length,j:db.jobs.filter(active).length}),btn(t('AI 助手'),"go('agent')",'','agent')+btn(t('新建项目'),'newProject()','primary','plus'))+modeCards()+`${db.projects.length?`<div class="grid-projects">${db.projects.map(p=>{const s=stage(p),jobs=projectJobs(p.id),attention=pending(p).length||jobs.some(j=>j.status==='needs_help');return `<button class="project-card" onclick="selectProject('${p.id}')"><div class="project-top"><h2>${esc(p.name)}</h2>${badge(staticMode(p)?t(p.site?'网站已生成':'待建立网站'):t(stageNames[s]),attention?'orange':s?'':'gray')}</div><p>${esc(p.description||t('尚未填写研究目标'))}</p><p class="muted">${modeTitle(p)}</p><div class="project-meta">${staticMode(p)?t('{n} 条记录',{n:p.site?.rows.length||0}):t('{c} 条候选 · {r} 条待复核 · {j} 个任务运行中 · {a} 份产物',{c:p.candidates.length,r:pending(p).length,j:jobs.filter(active).length,a:projectArtifacts(p.id).length})}</div><div class="progress"><i style="width:${staticMode(p)?(p.site?100:0):s*20}%"></i></div></button>`;}).join('')}</div>${examplesStrip()}`:examplesStrip()||empty(t('尚无项目'))}`;
+  return head(t('所有项目'),t('{p} 个项目 · {s} 台服务器 · {j} 个任务运行中',{p:db.projects.length,s:db.servers.length,j:db.jobs.filter(active).length}),btn(t('AI 助手'),"go('agent')",'','agent')+btn(t('管理项目'),'manageProjects()','','folder')+btn(t('新建项目'),'newProject()','primary','plus'))+modeCards()+`${db.projects.length?`<div class="grid-projects">${db.projects.map(p=>{const s=stage(p),jobs=projectJobs(p.id),attention=pending(p).length||jobs.some(j=>j.status==='needs_help');return `<button class="project-card" onclick="selectProject('${p.id}')"><div class="project-top"><h2>${esc(p.name)}</h2>${badge(staticMode(p)?t(p.site?'网站已生成':'待建立网站'):t(stageNames[s]),attention?'orange':s?'':'gray')}</div><p>${esc(p.description||t('尚未填写研究目标'))}</p><p class="muted">${modeTitle(p)}</p><div class="project-meta">${staticMode(p)?t('{n} 条记录',{n:p.site?.rows.length||0}):t('{c} 条候选 · {r} 条待复核 · {j} 个任务运行中 · {a} 份产物',{c:p.candidates.length,r:pending(p).length,j:jobs.filter(active).length,a:projectArtifacts(p.id).length})}</div><div class="progress"><i style="width:${staticMode(p)?(p.site?100:0):s*20}%"></i></div></button>`;}).join('')}</div>${examplesStrip()}`:examplesStrip()||empty(t('尚无项目'))}`;
 }
+
+function manageProjects(){
+  modal(t('管理项目'),`<p class="muted">${t('删除的项目会移入回收站，可随时恢复。未完成任务或 AI 消息会阻止删除。')}</p>`+db.projects.map(p=>`<div class="project-management-row"><strong>${esc(p.name)}</strong>${btn(t('删除项目'),`deleteProjectModal('${p.id}')`,'small','trash')}</div>`).join(''),btn(t('回收站'),'projectTrash()','','archive'));
+}
+function deleteProjectModal(pid){
+  const p=db.projects.find(p=>p.id===pid);if(!p)return;
+  modal(t('删除项目'),`<p>${t('将项目“{n}”移入回收站？',{n:esc(p.name)})}</p><p class="muted">${t('项目及关联记录将从工作列表移除；本地和远程文件保留，可在回收站恢复。')}</p>`,btn(t('确认删除'),`confirmDeleteProject('${p.id}')`,'primary','trash'));
+}
+function confirmDeleteProject(pid){run(async()=>{await act('deleteProject',{projectId:pid,approve:true},'项目已移入回收站');closeModal();go('projects');});}
+function projectTrash(){
+  const deleted=db.deletedProjects||[];
+  modal(t('回收站'),deleted.length?deleted.map(d=>`<div class="project-management-row"><div><strong>${esc(d.project.name)}</strong><p class="muted">${date(d.deletedAt)}</p></div>${btn(t('恢复项目'),`restoreProject('${d.project.id}')`,'small','sync')}</div>`).join(''):`<p class="muted">${t('回收站为空')}</p>`);
+}
+function restoreProject(pid){run(async()=>{await act('restoreProject',{projectId:pid},'项目已恢复');closeModal();selectProject(pid);});}
 
 function overview(){
   if(staticMode(current()))return sitePage();

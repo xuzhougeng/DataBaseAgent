@@ -143,6 +143,8 @@ Windows:
 
 Installers, cross-compilation and workspace locations are covered in [docs/build.md](docs/build.md).
 
+Use **All projects → Manage projects** to confirm moving a project and its records to Trash, or **Trash → Restore project** to recover it. Local and remote files are retained, and deletion does not stop remote processes. Unfinished jobs (including queued, retrying, syncing and needs-help jobs), unfinished project AI messages, or ongoing AI, search or review work prevent deletion. Trash persists across restarts.
+
 ### GPSAdb example
 
 GPSAdb 2.0 curates human cell-line RNA-seq datasets for single-gene perturbations. The `2026.10.22` data release contains 7,665 datasets and 42,235 samples covering 2,810 perturbed genes. [GPSAdb 2.0 paper](https://doi.org/10.1093/nar/gkaf1077) · [Versioned data release](https://doi.org/10.5281/zenodo.23585244)
