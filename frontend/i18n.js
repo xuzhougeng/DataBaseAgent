@@ -97,7 +97,7 @@ const EN={
 "登录成功，可用工具 {n} 个":"Signed in. {n} tools available",
 "该服务无需登录，可用工具 {n} 个":"This server needs no sign-in. {n} tools available",
 "删除插件配置及已保存的登录或 Token？此操作不会删除远端资源。":"Delete this plugin configuration and its saved sign-in or token? Remote resources will be kept.",
-"MCP 插件已登录":"MCP plugin signed in",
+"MCP 插件已登录":"MCP plugin signed in","已登录":"Signed in","已配置 Token":"Token set","已保存。现在可以使用浏览器登录或测试连接。":"Saved. You can now sign in with the browser or test the connection.",
 "待配置环境变量":"Environment required",
 "待测试连接":"Not tested",
 "MCP 插件":"MCP plugins",

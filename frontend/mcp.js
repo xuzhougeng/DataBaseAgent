@@ -4,8 +4,10 @@ const mcpServers=()=>db.settings.mcpServers||[];
 const mcpStateLabels={disabled:'已停用',needs_token:'待登录或配置 Token',needs_env:'待配置环境变量',configured:'待测试连接'};
 let mcpEditingId='',mcpTesting=false,mcpTestSequence=0;
 
+// Authenticated plugins show how they are signed in; "configured" alone still reads as "test pending".
+function mcpCardBadge(id){const state=meta.mcpStates?.[id]||'configured',auth=state==='configured'&&meta.mcpAuth?.[id];return auth?badge(t(auth==='oauth'?'已登录':'已配置 Token')):badge(t(mcpStateLabels[state]||'待测试连接'),'gray');}
 function mcpSettings(){
-  return `<section class="card"><div class="card-head"><h2>${t('MCP 插件')}</h2>${btn(t('添加 MCP 插件'),'mcpModal()','small','plus')}</div><div class="content-pad"><p class="muted">${t('默认提供 GitHub 和 Cloudflare。配置认证后，主 Agent 可按需发现和调用插件工具，调用记录保留在对话中。')}</p><div class="mcp-grid">${mcpServers().map(v=>`<button class="mcp-card" onclick="mcpModal('${v.id}')" aria-haspopup="dialog"><span class="mcp-card-heading"><strong>${esc(v.name)}</strong>${badge(t(mcpStateLabels[meta.mcpStates?.[v.id]]||'待测试连接'),'gray')}</span><span class="muted mono">${esc(v.transport==='http'?v.url:v.command)}</span><span class="mcp-card-heading"><small>${v.transport==='stdio'?'STDIO':'Streamable HTTP'}</small><span class="text-button">${t('配置与测试')} ${I('chevron')}</span></span></button>`).join('')||`<p class="muted">${t('尚未配置 MCP 插件')}</p>`}</div></div></section>`;
+  return `<section class="card"><div class="card-head"><h2>${t('MCP 插件')}</h2>${btn(t('添加 MCP 插件'),'mcpModal()','small','plus')}</div><div class="content-pad"><p class="muted">${t('默认提供 GitHub 和 Cloudflare。配置认证后，主 Agent 可按需发现和调用插件工具，调用记录保留在对话中。')}</p><div class="mcp-grid">${mcpServers().map(v=>`<button class="mcp-card" onclick="mcpModal('${v.id}')" aria-haspopup="dialog"><span class="mcp-card-heading"><strong>${esc(v.name)}</strong>${mcpCardBadge(v.id)}</span><span class="muted mono">${esc(v.transport==='http'?v.url:v.command)}</span><span class="mcp-card-heading"><small>${v.transport==='stdio'?'STDIO':'Streamable HTTP'}</small><span class="text-button">${t('配置与测试')} ${I('chevron')}</span></span></button>`).join('')||`<p class="muted">${t('尚未配置 MCP 插件')}</p>`}</div></div></section>`;
 }
 function mcpModal(sid){
   const v=mcpServers().find(x=>x.id===sid)||{transport:'http',enabled:true,startupTimeoutSec:20,toolTimeoutSec:60};
@@ -50,7 +52,11 @@ function saveMCP(){
   const mcpServer={id:mcpEditingId,name:val('mcp-name'),transport:val('mcp-transport'),enabled:document.getElementById('mcp-enabled').checked,url:val('mcp-url'),command:val('mcp-command'),args:mcpLines('mcp-args'),envVars:mcpLines('mcp-env'),bearerTokenEnv:val('mcp-token-env'),oauthClientId:val('mcp-client-id'),startupTimeoutSec:Number(val('mcp-startup')),toolTimeoutSec:Number(val('mcp-timeout')),enabledTools:mcpLines('mcp-allow'),disabledTools:mcpLines('mcp-deny')};
   run(async()=>{
     const reply=await act('saveMCPServer',{mcpServer,apiKey:mcpServer.transport==='http'?(clear?'':token||undefined):''},'MCP 插件配置已保存');
-    if(reply)mcpModal(reply.result.mcpServerId);
+    if(!reply)return;
+    if(mcpServer.id){closeModal();return;}
+    // A new plugin reopens so the user can sign in or test it right away.
+    mcpModal(reply.result.mcpServerId);
+    document.getElementById('mcp-test-result').textContent=t('已保存。现在可以使用浏览器登录或测试连接。');
   });
 }
 // While a test or sign-in runs, every control in the dialog is disabled and closeModal() refuses, so the request cannot be abandoned by accident.
