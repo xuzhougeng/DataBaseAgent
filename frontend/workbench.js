@@ -367,9 +367,11 @@ function saveLoop(){run(()=>act('settings',{settings:{...db.settings,intervalSec
 function modelModal(mid){
   const m=models().find(x=>x.id===mid)||{protocol:'openai'};
   const hasKey=meta.keySaved?.[m.id]||m.apiKeyEnv;
+  // Model configuration must preserve the user's spelling and capitalization.
+  const exactInput='autocapitalize="none" autocorrect="off" spellcheck="false"';
   ui.modelId=m.id||'';
-  modal(t(m.id?'编辑模型':'添加模型'),`<form id="model-form" data-model-id="${m.id||''}" onsubmit="event.preventDefault();saveModel()">`+field(t('名称（便于在 Agent 中选择）'),'model-name',m.name||'','input','required')+`<div class="field"><label for="model-protocol">${t('协议')}</label><select id="model-protocol" onchange="document.getElementById('model-hint').textContent=t(protocolHints[this.value])">${Object.entries(protocolNames).map(([k,n])=>`<option value="${k}" ${k===m.protocol?'selected':''}>${t(n)}</option>`).join('')}</select></div>`+field(t('API 基础地址（服务前缀）'),'model-url',m.baseUrl||'','input','type="url" required')+`<p class="muted" id="model-hint">${esc(t(protocolHints[m.protocol]))}</p>`+field(t('模型 ID'),'model-model',m.model||'','input','required')+
-    field('API Key','model-key','','input','type="password" autocomplete="new-password" spellcheck="false"')+
+  modal(t(m.id?'编辑模型':'添加模型'),`<form id="model-form" data-model-id="${m.id||''}" onsubmit="event.preventDefault();saveModel()">`+field(t('名称（便于在 Agent 中选择）'),'model-name',m.name||'','input',`${exactInput} required`)+`<div class="field"><label for="model-protocol">${t('协议')}</label><select id="model-protocol" onchange="document.getElementById('model-hint').textContent=t(protocolHints[this.value])">${Object.entries(protocolNames).map(([k,n])=>`<option value="${k}" ${k===m.protocol?'selected':''}>${t(n)}</option>`).join('')}</select></div>`+field(t('API 基础地址（服务前缀）'),'model-url',m.baseUrl||'','input',`${exactInput} type="url" required`)+`<p class="muted" id="model-hint">${esc(t(protocolHints[m.protocol]))}</p>`+field(t('模型 ID'),'model-model',m.model||'','input',`${exactInput} required`)+
+    field('API Key','model-key','','input',`${exactInput} type="password" autocomplete="new-password"`)+
     `<p class="muted">${t(hasKey?'留空保留现有密钥设置，填写新密钥即可替换。更换服务地址或协议时需要重新填写。':'API Key 保存在系统凭据库。无需认证的服务可留空。')}</p>`+
     (hasKey?`<label class="muted"><input type="checkbox" id="model-clear-key" onchange="document.getElementById('model-key').disabled=this.checked"> ${t('移除当前密钥设置')}</label>`:'')+'</form>',
     (m.id?btn(t('删除模型'),`deleteModel('${m.id}')`,'','trash'):'')+`<button class="button primary" type="submit" form="model-form">${t('保存模型')}</button>`,'model-modal');
