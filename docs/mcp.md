@@ -147,8 +147,9 @@ Calls are not automatically retried by DBA. A timeout or cancellation can occur
 after a remote write has already executed; inspect the remote state before
 retrying. Disabling or deleting a plugin prevents subsequent calls but does not
 undo or cancel an operation already sent to the server. Tool access is controlled
-by the configured filters and provider credentials, with no separate per-call
-approval dialog.
+by the configured filters and provider credentials. Tools the server marks
+read-only run directly; every other call waits for your approval in the
+conversation.
 
 The client uses the official MCP Go SDK for protocol negotiation, OAuth
 authorization, Streamable HTTP (JSON and SSE responses), and STDIO. Legacy

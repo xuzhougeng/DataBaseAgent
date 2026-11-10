@@ -56,7 +56,7 @@ Everything runs on your machine. DBA writes workspace state to a single JSON fil
 
 ```
                        ┌──────────────────────────── Desktop (Wails v3) / Browser preview ────────────────────────────┐
-                       │  Vanilla HTML/CSS/JS · 10 views · polls /api/state · zero npm dependencies                   │
+                       │  Vanilla HTML/CSS/JS · 14 views · polls /api/state · zero npm dependencies                   │
                        └───────────────────────────────────────────┬──────────────────────────────────────────────────┘
                                                                    │ loopback HTTP, same-origin enforced
  ┌─────────────────────────────────────────────────────────────────▼─────────────────────────────────────────────────┐
@@ -67,7 +67,7 @@ Everything runs on your machine. DBA writes workspace state to a single JSON fil
  │   Loop ──── scheduler tick: dispatch · poll · classify failures · retry · sync · escalate                          │
  │   Discovery  Europe PMC · PubMed · GEO adapters, cursor paging, de-duplication                                     │
  │   Agents ── bounded tool-use loop · 5 preset personas · read/write tools · per-call trace                         │
- │   LLM ───── protocol adapters: OpenAI Chat Completions · Anthropic Messages · Google Gemini                        │
+ │   LLM ───── protocol adapters: OpenAI Chat Completions · OpenAI Responses · Anthropic Messages · Google Gemini     │
  │   Executor  SSH: idempotent submission, nohup, exit-code marker, resumable transfer, SHA-256                       │
  └─────────────────────────────────────┬──────────────────────────────────────┬──────────────────────────────────────┘
                                        │ ssh (BatchMode, strict host keys)    │ HTTPS (proxy-aware)
@@ -86,7 +86,7 @@ Everything runs on your machine. DBA writes workspace state to a single JSON fil
 - **Supervised remote execution** — idempotent submission markers, durable exit codes, PID liveness checks, transient-failure classification, exponential back-off, help requests with resume-from-phase.
 - **Verified archive** — per-file SHA-256, resumable transfer with `.partial` files, 100 GiB per-file ceiling, path confinement on both ends, `run_manifest.json` provenance.
 - **Agent team** — five preset personas with distinct icons, tool scopes and models; a tool-use loop with step budgets, forced final answers and a persisted trace of every call.
-- **Provider-agnostic LLM layer** — one neutral conversation model, three wire protocols, per-agent model selection and direct API key entry.
+- **Provider-agnostic LLM layer** — one neutral conversation model, four wire protocols, per-agent model selection and direct API key entry.
 - **MCP plugins** — GitHub and Cloudflare presets, custom Streamable HTTP / STDIO servers, browser OAuth sign-in or secure token storage, connection tests, tool filters, and traced on-demand calls from the main assistant. [Setup guide](docs/mcp.md)
 - **Local & portable** — single binary, embedded assets, no database server, works offline except for discovery and model calls.
 
@@ -174,7 +174,7 @@ node --check frontend/workbench.js && node --check frontend/conversations.js && 
 node scripts/check-i18n.js && node --test scripts/test-conversations.js
 ```
 
-The suite exercises project isolation, the recorded-inclusion gate, immutable pipeline snapshots, cross-project server quotas, no-resubmission on lost acknowledgements, bounded recovery and hand-off, transfer recovery without re-execution, restart resumption, persistence rollback and corruption detection, discovery de-duplication and fetch limits, evidence verification, same-origin enforcement, agent tool scoping and tracing, all three model protocols, schema migration, conversation-driven workflows and retained traces after failures — using a controllable executor and a stubbed HTTP transport. Real servers and model endpoints still need to be validated with your own configuration.
+The suite exercises project isolation, the recorded-inclusion gate, immutable pipeline snapshots, cross-project server quotas, no-resubmission on lost acknowledgements, bounded recovery and hand-off, transfer recovery without re-execution, restart resumption, persistence rollback and corruption detection, discovery de-duplication and fetch limits, evidence verification, same-origin enforcement, agent tool scoping and tracing, all four model protocols, schema migration, conversation-driven workflows and retained traces after failures — using a controllable executor and a stubbed HTTP transport. Real servers and model endpoints still need to be validated with your own configuration.
 
 ## Scope
 
@@ -188,11 +188,11 @@ This is a working first release aimed at closing the single-server loop end to e
 main.go                 Wails desktop entry point (single-instance, workspace flag)
 cmd/dba-server/         Browser preview server bound to 127.0.0.1
 internal/workbench/     Core: store · service · loop · discovery · agent · llm · ssh · http
-frontend/               Embedded UI: index.html · styles.css · workbench.js
-assets/                 README screenshots
-scripts/                build.sh · build.ps1 · installer.nsi
+frontend/               Embedded UI: index.html · styles.css · i18n.js · workbench.js · conversations.js · mcp.js · examples.js
+assets/                 README screenshot and application icon sources
+scripts/                build.sh · build.ps1 · installer.nsi · check-i18n.js · test-conversations.js
 docs/                   Topic documentation
-examples/               Design-demo files for both project modes, embedded for the in-app Examples page
+examples/               Design-demo files for both project modes, embedded for the in-app Examples page (pbmc5k/ is imported manually)
 ```
 
 ## Data-driven website design and domain SKILLs

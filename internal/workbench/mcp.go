@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -47,8 +46,6 @@ func defaultMCPServers() []MCPServer {
 	}
 }
 
-var mcpEnvName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-
 func validateMCPServer(v *MCPServer) error {
 	v.Name, v.URL, v.Command = strings.TrimSpace(v.Name), strings.TrimSpace(v.URL), strings.TrimSpace(v.Command)
 	v.BearerTokenEnv, v.OAuthClientID = strings.TrimSpace(v.BearerTokenEnv), strings.TrimSpace(v.OAuthClientID)
@@ -67,7 +64,7 @@ func validateMCPServer(v *MCPServer) error {
 	if v.StartupTimeoutSec < 1 || v.StartupTimeoutSec > 120 || v.ToolTimeoutSec < 1 || v.ToolTimeoutSec > 600 {
 		return errors.New("MCP 连接超时需为 1–120 秒，工具超时需为 1–600 秒")
 	}
-	if v.BearerTokenEnv != "" && !mcpEnvName.MatchString(v.BearerTokenEnv) {
+	if v.BearerTokenEnv != "" && !envVarName.MatchString(v.BearerTokenEnv) {
 		return errors.New("MCP Token 环境变量名无效")
 	}
 	switch v.Transport {
@@ -96,7 +93,7 @@ func validateMCPServer(v *MCPServer) error {
 			}
 		}
 		for _, e := range v.EnvVars {
-			if !mcpEnvName.MatchString(e) {
+			if !envVarName.MatchString(e) {
 				return errors.New("MCP 环境变量列表仅接受变量名，不接受密钥明文")
 			}
 		}
@@ -124,6 +121,19 @@ func mcpServerByID(st *State, sid string) (MCPServer, error) {
 		}
 	}
 	return MCPServer{}, errors.New("MCP 插件不存在")
+}
+
+// mcpServerConfig returns a private copy of one plugin's configuration.
+func (s *Service) mcpServerConfig(sid string) (v MCPServer, err error) {
+	err = s.Store.Read(func(st *State) error {
+		if v, err = mcpServerByID(st, sid); err != nil {
+			return err
+		}
+		v.Args, v.EnvVars = slices.Clone(v.Args), slices.Clone(v.EnvVars)
+		v.EnabledTools, v.DisabledTools = slices.Clone(v.EnabledTools), slices.Clone(v.DisabledTools)
+		return nil
+	})
+	return v, err
 }
 
 func (s *Service) manageMCPServer(action string, r Request) (any, error) {
@@ -419,8 +429,7 @@ func (s *Service) startMCP(ctx context.Context, c *mcpConnection, transport mcp.
 }
 
 func (s *Service) acquireMCP(ctx context.Context, sid string) (*mcpConnection, func(), error) {
-	st := s.Store.Snapshot()
-	v, err := mcpServerByID(&st, sid)
+	v, err := s.mcpServerConfig(sid)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -512,11 +521,13 @@ func (s *Service) runMCPTool(ctx context.Context, a Agent, call ToolCall, args m
 		return fail(errors.New("只有主 Agent 可以调用 MCP 插件"))
 	}
 	if call.Name == "list_mcp_servers" {
-		st := s.Store.Snapshot()
 		out := []map[string]any{}
-		for _, v := range st.Settings.MCPServers {
-			out = append(out, map[string]any{"id": v.ID, "name": v.Name, "transport": v.Transport, "status": mcpStatus(v), "enabled": v.Enabled})
-		}
+		_ = s.Store.Read(func(st *State) error {
+			for _, v := range st.Settings.MCPServers {
+				out = append(out, map[string]any{"id": v.ID, "name": v.Name, "transport": v.Transport, "status": mcpStatus(v), "enabled": v.Enabled})
+			}
+			return nil
+		})
 		b, _ := json.Marshal(out)
 		return string(b), false
 	}

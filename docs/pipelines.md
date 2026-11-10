@@ -108,7 +108,7 @@ Closing DBA does not stop remote work; on the next launch the loop re-attaches t
 
 ```json
 {
-  "schema": 2,
+  "schema": 3,
   "job_id": "job_…",
   "dataset_id": "candidate_…",
   "source_accession": "GSE…",
@@ -125,7 +125,7 @@ Closing DBA does not stop remote work; on the next launch the loop re-attaches t
 }
 ```
 
-The project-level export (`/api/manifest?projectId=…`) bundles the project, its jobs (with key paths removed) and all artifacts into one JSON document for downstream database construction.
+The project-level export (the `exportManifest` action, written to `projects/<project id>/results/dba_manifest.json`) bundles the project, its jobs (with key paths removed) and all artifacts into one JSON document for downstream database construction.
 
 ## Limitations
 

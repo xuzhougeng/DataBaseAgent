@@ -119,8 +119,7 @@ func mcpOAuthHandler(v MCPServer, session *mcpOAuthSession, secret, redirect str
 // lists tools like testMCPServer. r.APIKey optionally carries a client secret
 // for a user-registered OAuth app; it is stored only inside the session blob.
 func (s *Service) loginMCPServer(ctx context.Context, r Request) (any, error) {
-	st := s.Store.Snapshot()
-	v, err := mcpServerByID(&st, r.MCPServerID)
+	v, err := s.mcpServerConfig(r.MCPServerID)
 	if err != nil {
 		return nil, err
 	}
@@ -189,9 +188,12 @@ func (s *Service) loginMCPServer(ctx context.Context, r Request) (any, error) {
 		names = append(names, tool.Name)
 	}
 	signedIn := false
-	for _, item := range s.Store.Snapshot().Settings.MCPServers {
-		signedIn = signedIn || (item.ID == v.ID && mcpOAuth(item))
-	}
+	_ = s.Store.Read(func(st *State) error {
+		for _, item := range st.Settings.MCPServers {
+			signedIn = signedIn || (item.ID == v.ID && mcpOAuth(item))
+		}
+		return nil
+	})
 	b, err := c.resultJSON(map[string]any{"serverId": v.ID, "toolCount": len(tools), "tools": names, "signedIn": signedIn})
 	return json.RawMessage(b), err
 }

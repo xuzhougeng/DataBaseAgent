@@ -223,7 +223,7 @@ type Trace struct {
 	Ms        int64  `json:"ms"`
 }
 
-// ModelProfile is one LLM endpoint. Protocol: openai (Chat Completions 兼容) | anthropic (Messages) | gemini (generateContent).
+// ModelProfile is one LLM endpoint. Protocol: openai (Chat Completions 兼容) | openai-responses (Responses) | anthropic (Messages) | gemini (generateContent).
 type ModelProfile struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`

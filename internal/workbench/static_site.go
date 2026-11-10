@@ -35,6 +35,8 @@ type SiteTemplate struct {
 	TitleColumn     string   `json:"titleColumn" yaml:"title-column"`
 }
 
+var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
 func validateSiteTemplate(t *SiteTemplate) error {
 	if t.Layout != "table" && t.Layout != "cards" {
 		return errors.New("SKILL 模板 layout 必须为 table 或 cards")
@@ -42,7 +44,7 @@ func validateSiteTemplate(t *SiteTemplate) error {
 	if t.Accent == "" {
 		t.Accent = "#237c63"
 	}
-	if !regexp.MustCompile(`^#[0-9a-fA-F]{6}$`).MatchString(t.Accent) {
+	if !hexColor.MatchString(t.Accent) {
 		return errors.New("SKILL 模板 accent 必须为六位十六进制颜色")
 	}
 	if strings.TrimSpace(t.Label) == "" || len(t.Label) > 120 || len(t.RequiredColumns) > 100 {

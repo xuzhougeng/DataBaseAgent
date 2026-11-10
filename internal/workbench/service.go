@@ -160,8 +160,13 @@ func validHTTPURL(raw string) error {
 	return nil
 }
 
+var (
+	serverHost = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]*$`)
+	serverUser = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*$`)
+)
+
 func validateServer(v Server) error {
-	if strings.TrimSpace(v.Name) == "" || !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]*$`).MatchString(v.Host) || !regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*$`).MatchString(v.User) {
+	if strings.TrimSpace(v.Name) == "" || !serverHost.MatchString(v.Host) || !serverUser.MatchString(v.User) {
 		return errors.New("请输入服务器名、主机和 SSH 用户")
 	}
 	if v.Port < 1 || v.Port > 65535 || v.CPUQuota < 1 || v.MaxJobs < 1 || v.MaxJobs > 128 {
@@ -179,10 +184,10 @@ func validateServer(v Server) error {
 	return nil
 }
 func validatePipeline(st *State, v Pipeline) error {
-	if _, e := serverByID(st, v.ServerID); e != nil {
+	server, e := serverByID(st, v.ServerID)
+	if e != nil {
 		return e
 	}
-	server, _ := serverByID(st, v.ServerID)
 	if v.CPUs < 1 || v.CPUs > server.CPUQuota || v.Concurrency < 1 || v.Concurrency > 128 {
 		return errors.New("任务资源超出服务器 CPU 配额，或并发无效")
 	}
@@ -264,27 +269,35 @@ func queueJobs(st *State, pid string) error {
 }
 
 func (s *Service) PreviewArtifact(artifactID string) (string, error) {
-	for _, a := range s.Store.Snapshot().Artifacts {
-		if a.ID == artifactID {
-			base := filepath.Join(s.Store.root, "projects")
-			rel, e := filepath.Rel(base, a.Path)
-			if e != nil || strings.HasPrefix(rel, "..") {
-				return "", errors.New("无效的产物路径")
+	name, found := "", false
+	_ = s.Store.Read(func(st *State) error {
+		for _, a := range st.Artifacts {
+			if a.ID == artifactID {
+				name, found = a.Path, true
+				break
 			}
-			f, e := os.Open(a.Path)
-			if e != nil {
-				return "", e
-			}
-			defer f.Close()
-			b := make([]byte, 64*1024)
-			n, _ := f.Read(b)
-			if strings.IndexByte(string(b[:n]), 0) >= 0 {
-				return "", errors.New("二进制文件请在本地结果目录中查看")
-			}
-			return strings.ToValidUTF8(string(b[:n]), "�"), nil
 		}
+		return nil
+	})
+	if !found {
+		return "", errors.New("产物不存在")
 	}
-	return "", errors.New("产物不存在")
+	base := filepath.Join(s.Store.root, "projects")
+	rel, e := filepath.Rel(base, name)
+	if e != nil || strings.HasPrefix(rel, "..") {
+		return "", errors.New("无效的产物路径")
+	}
+	f, e := os.Open(name)
+	if e != nil {
+		return "", e
+	}
+	defer f.Close()
+	b := make([]byte, 64*1024)
+	n, _ := f.Read(b)
+	if strings.IndexByte(string(b[:n]), 0) >= 0 {
+		return "", errors.New("二进制文件请在本地结果目录中查看")
+	}
+	return strings.ToValidUTF8(string(b[:n]), "�"), nil
 }
 
 // openURL opens an http(s) link in the system browser; the desktop WebView cannot open new windows itself.
