@@ -25,8 +25,11 @@ func LoopbackOnly(next http.Handler) http.Handler {
 		}
 		host = strings.Trim(host, "[]")
 		if !strings.EqualFold(host, "localhost") && host != "127.0.0.1" && host != "::1" {
+			// Not http.Error: it relabels the JSON body as text/plain.
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			http.Error(w, `{"error":"仅接受本机地址访问"}`, http.StatusForbidden)
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "仅接受本机地址访问"})
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -44,24 +47,34 @@ func Handler(s *Service, assets fs.FS) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		write := func(v any) { _ = json.NewEncoder(w).Encode(v) }
 		if origin := r.Header.Get("Origin"); origin != "" {
 			u, e := url.Parse(origin)
 			if e != nil || !strings.EqualFold(u.Host, r.Host) {
-				http.Error(w, `{"error":"跨来源请求已拒绝"}`, 403)
+				w.WriteHeader(http.StatusForbidden)
+				write(map[string]string{"error": "跨来源请求已拒绝"})
 				return
 			}
 		}
-		write := func(v any) { _ = json.NewEncoder(w).Encode(v) }
 		switch {
 		case r.Method == "GET" && r.URL.Path == "/api/site":
-			state := s.Store.Snapshot()
-			p, err := projectByID(&state, r.URL.Query().Get("projectId"))
-			if err != nil || p.Site == nil {
+			// Rendered under the read lock, so the site is never copied out of the state.
+			page, found := "", false
+			err := s.Store.Read(func(st *State) error {
+				p, err := projectByID(st, r.URL.Query().Get("projectId"))
+				if err != nil || p.Site == nil {
+					return nil
+				}
+				found = true
+				page, err = renderStaticSite(p.Site)
+				return err
+			})
+			if !found {
 				w.WriteHeader(404)
 				write(map[string]string{"error": "静态网站尚未生成"})
 				return
 			}
-			writeSite(w, r, p.Site)
+			writeSite(w, r, page, err)
 		case r.Method == "GET" && r.URL.Path == "/api/examples":
 			list, err := examplesFor(r.URL.Query().Get("lang"))
 			if err != nil {
@@ -77,14 +90,15 @@ func Handler(s *Service, assets fs.FS) http.Handler {
 				write(map[string]string{"error": "示例不存在"})
 				return
 			}
-			state := s.Store.Snapshot()
-			site, err := exampleSite(&state, ex, true)
-			if err != nil {
-				w.WriteHeader(500)
-				write(map[string]string{"error": err.Error()})
-				return
-			}
-			writeSite(w, r, site)
+			page := ""
+			err = s.Store.Read(func(st *State) error {
+				site, err := exampleSite(st, ex, true)
+				if err == nil {
+					page, err = renderStaticSite(site)
+				}
+				return err
+			})
+			writeSite(w, r, page, err)
 		case r.Method == "GET" && r.URL.Path == "/api/state":
 			body, tag := s.stateResponse(r.Header.Get("If-None-Match"))
 			w.Header().Set("ETag", tag)
@@ -129,8 +143,7 @@ func Handler(s *Service, assets fs.FS) http.Handler {
 }
 
 // writeSite serves a generated website as an inert, sandboxed document.
-func writeSite(w http.ResponseWriter, r *http.Request, site *StaticSite) {
-	html, err := renderStaticSite(site)
+func writeSite(w http.ResponseWriter, r *http.Request, html string, err error) {
 	if err != nil {
 		w.WriteHeader(500)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})

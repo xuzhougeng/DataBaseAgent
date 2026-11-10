@@ -4,7 +4,7 @@ DBA supports two project modes. **Existing data / `static`** skips discovery and
 
 ## Using templates
 
-Open **All projects**, choose **Build a website from your data**, name the project, then select a template on **Static website**. Paste data or import a UTF-8 CSV, TSV or JSON file. CSV/TSV use their first row as headers. JSON uses an array of objects; columns are the sorted union of object keys. Missing JSON values display as empty cells, numeric values retain their precision, and nested values display as JSON text. Limits: 2 MB, 10,000 records and 100 columns. Header names are case-sensitive and must match the template's required fields.
+Open **All projects**, choose **Build a website from your data**, name the project, then select a template on **Static website**. Paste data or import a UTF-8 CSV, TSV or JSON file. CSV/TSV use their first row as headers. JSON uses an array of objects; columns are the sorted union of object keys. Missing JSON values display as empty cells, numeric values retain their precision, and nested values display as JSON text. Limits: 2 MiB, 10,000 records and 100 columns. Header names are case-sensitive and must match the template's required fields.
 
 Two fixed templates and one authoring skill ship with new workspaces:
 

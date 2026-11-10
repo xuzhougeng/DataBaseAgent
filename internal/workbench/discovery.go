@@ -42,8 +42,8 @@ func (s *Service) Search(ctx context.Context, r Request) (any, error) {
 		return nil, errors.New("已有检索进行中，请等待完成")
 	}
 	defer s.searchMu.Unlock()
-	state := s.Store.Snapshot()
-	p, e := projectByID(&state, r.ProjectID)
+	pid := r.ProjectID
+	e := s.Store.Read(func(st *State) error { _, e := projectByID(st, pid); return e })
 	if e != nil {
 		return nil, e
 	}
@@ -67,14 +67,14 @@ func (s *Service) Search(ctx context.Context, r Request) (any, error) {
 	}
 	if e != nil {
 		_ = s.Store.Update(func(st *State) error {
-			event(st, p.ID, "", "error", "检索未完成", r.Source+" · "+e.Error())
+			event(st, pid, "", "error", "检索未完成", r.Source+" · "+e.Error())
 			return nil
 		})
 		return nil, e
 	}
 	record := SearchRecord{ID: id("search"), Query: query, Source: r.Source, Total: total, Fetched: len(rows), At: now()}
 	e = s.Store.Update(func(st *State) error {
-		cur, err := projectByID(st, p.ID)
+		cur, err := projectByID(st, pid)
 		if err != nil {
 			return err
 		}
@@ -83,7 +83,7 @@ func (s *Service) Search(ctx context.Context, r Request) (any, error) {
 		cur.Source = r.Source
 		cur.Searches = append(cur.Searches, record)
 		cur.UpdatedAt = now()
-		event(st, p.ID, "", "search", "检索完成", fmt.Sprintf("%s · 命中 %d，获取 %d，新增 %d（上限 %d）", r.Source, total, len(rows), record.Added, limit))
+		event(st, pid, "", "search", "检索完成", fmt.Sprintf("%s · 命中 %d，获取 %d，新增 %d（上限 %d）", r.Source, total, len(rows), record.Added, limit))
 		return nil
 	})
 	return record, e

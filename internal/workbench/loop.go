@@ -292,24 +292,28 @@ func (s *Service) operationError(j Job, err error) {
 // ExportManifest writes the project's provenance manifest into its local results directory and returns the path.
 // ponytail: written server-side because the macOS WebView (WKWebView) ignores blob downloads.
 func (s *Service) ExportManifest(pid string) (string, error) {
-	state := s.Store.Snapshot()
-	p, e := projectByID(&state, pid)
-	if e != nil {
-		return "", e
-	}
-	jobs, artifacts := []Job{}, []Artifact{}
-	for _, j := range state.Jobs {
-		if j.ProjectID == pid {
-			j.Server.KeyPath = ""
-			jobs = append(jobs, j)
+	var b []byte
+	e := s.Store.Read(func(st *State) error {
+		p, e := projectByID(st, pid)
+		if e != nil {
+			return e
 		}
-	}
-	for _, a := range state.Artifacts {
-		if a.ProjectID == pid {
-			artifacts = append(artifacts, a)
+		jobs, artifacts := []Job{}, []Artifact{}
+		for _, j := range st.Jobs {
+			if j.ProjectID == pid {
+				j.Server.KeyPath = "" // j is a copy; the stored job keeps its key path
+				jobs = append(jobs, j)
+			}
 		}
-	}
-	b, e := json.MarshalIndent(map[string]any{"schema": SchemaVersion, "project": p, "jobs": jobs, "artifacts": artifacts, "exportedAt": now()}, "", "  ")
+		for _, a := range st.Artifacts {
+			if a.ProjectID == pid {
+				artifacts = append(artifacts, a)
+			}
+		}
+		// Serialized under the lock: these values reference the live state.
+		b, e = json.MarshalIndent(map[string]any{"schema": SchemaVersion, "project": p, "jobs": jobs, "artifacts": artifacts, "exportedAt": now()}, "", "  ")
+		return e
+	})
 	if e != nil {
 		return "", e
 	}
@@ -335,14 +339,20 @@ func writeManifest(root string, j Job, artifacts []Artifact) error {
 }
 
 func (s *Service) Probe(ctx context.Context, sid string) error {
-	state := s.Store.Snapshot()
-	server, e := serverByID(&state, sid)
+	var server Server
+	e := s.Store.Read(func(st *State) error {
+		v, e := serverByID(st, sid)
+		if e == nil {
+			server = *v
+		}
+		return e
+	})
 	if e != nil {
 		return e
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	out, probeErr := s.Runner.Probe(probeCtx, *server)
+	out, probeErr := s.Runner.Probe(probeCtx, server)
 	e = s.Store.Update(func(st *State) error {
 		cur, e := serverByID(st, sid)
 		if e != nil {

@@ -79,6 +79,8 @@ type Skill struct {
 	UpdatedAt   string        `json:"updatedAt"`
 }
 
+var skillName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
 func parseSkill(content string) (Skill, error) {
 	if len(content) > 12000 || !utf8.ValidString(content) {
 		return Skill{}, errors.New("SKILL.md 必须是 UTF-8 文本且不超过 12 KB")
@@ -109,7 +111,7 @@ func parseSkill(content string) (Skill, error) {
 		return Skill{}, fmt.Errorf("SKILL.md 元数据无效: %w", err)
 	}
 	meta.Description = strings.TrimSpace(meta.Description)
-	if !regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`).MatchString(meta.Name) || len(meta.Name) > 64 {
+	if !skillName.MatchString(meta.Name) || len(meta.Name) > 64 {
 		return Skill{}, errors.New("SKILL 名称需为 1–64 位小写字母、数字和连字符")
 	}
 	if meta.Description == "" || len(meta.Description) > 1024 || strings.TrimSpace(strings.Join(lines[end+1:], "\n")) == "" {

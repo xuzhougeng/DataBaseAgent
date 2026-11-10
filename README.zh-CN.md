@@ -2,7 +2,7 @@
 
 # DataBaseAgent（DBA）
 
-基于 **Wails v3.1.0 + Go + 原生 HTML/CSS/JavaScript** 的本地主题数据库构建工作台。既支持数据收集、分析与归档，也让 Agent 根据已有数据和领域 SKILL 自主设计网站。整体设计包括静态和动态网站，当前已实现并验证的是静态交互建站路径。十个页面：所有项目、项目概览、主题与检索、数据复核、处理流程、运行任务、服务器资源、数据与产物、AI 助手、偏好设置。
+基于 **Wails v3.1.0 + Go + 原生 HTML/CSS/JavaScript** 的本地主题数据库构建工作台。既支持数据收集、分析与归档，也让 Agent 根据已有数据和领域 SKILL 自主设计网站。整体设计包括静态和动态网站，当前已实现并验证的是静态交互建站路径。十四个页面：所有项目、项目概览、主题与检索、数据复核、处理流程、运行任务、服务器资源、数据与产物、静态网站、SKILL 模板、示例、AI 助手、Agent 中心、偏好设置。
 
 <p align="center"><img src="assets/DBA-overview.jpg" width="960" alt="DBA 英文项目概览，展示 GPSAdb 2.0 的 SK-N-SH 扰动数据归档"></p>
 
@@ -92,11 +92,11 @@ SKILL 可按任务匹配或通过 `$skill-name` 按需读取。生成结果保�
 
 预设五个角色，工具范围固定、指令和模型可改：项目助手拥有完整工具集，检索策略师、复核员、流程顾问和运维巡检员分别负责相应环节。工具复用手工操作的业务校验，连续调用读取最新状态；复核理由、操作结果和调用痕迹均会保存，执行中断也保留已完成步骤。无项目时可在“工作空间对话”中让 AI 建项目，关键事实缺失时在对话中补充。模型配置工具使用已有环境变量或保留系统凭据，密钥明文仍在偏好设置中填写。
 
-在偏好设置页添加模型时，选择协议并直接填写 API 基础地址、模型 ID 和 API Key。无需认证的服务可将密钥留空。API Key 保存在系统凭据库，已有模型仍可读取原先配置的环境变量。支持 OpenAI Chat Completions 兼容协议（涵盖 DeepSeek、Qwen、Ollama、vLLM 等）、Anthropic Messages 和 Google Gemini。每个 Agent 可选择不同模型，未选择时使用列表中的第一个。[模型配置指南](docs/models.md)
+在偏好设置页添加模型时，选择协议并直接填写 API 基础地址、模型 ID 和 API Key。无需认证的服务可将密钥留空。API Key 保存在系统凭据库，已有模型仍可读取原先配置的环境变量。支持 OpenAI Chat Completions 兼容协议（涵盖 DeepSeek、Qwen、Ollama、vLLM 等）、OpenAI Responses、Anthropic Messages 和 Google Gemini。每个 Agent 可选择不同模型，未选择时使用列表中的第一个。[模型配置指南](docs/models.md)
 
 偏好设置中的 **MCP 插件** 默认带有 GitHub 和 Cloudflare。保存后点击「浏览器登录」在浏览器中授权（Cloudflare 开箱即用，GitHub 需自建 OAuth App），或填写 GitHub PAT / Cloudflare API Token，主 Agent 即可按需发现和调用工具，调用过程保留在对话记录中。也可添加 Streamable HTTP 或本地 STDIO 服务，设置超时、工具允许列表与禁用列表。登录信息与 Token 都保存在系统凭据库，也可从启动环境变量读取。[MCP 配置指南](docs/mcp.md)
 
-检索、模型和 MCP HTTP 请求遵循启动进程的 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量。GitHub 操作及构建脚本使用 `http://127.0.0.1:7897` 代理。SSH 采用本机密钥或 SSH Agent，强制校验已知主机，不支持交互式密码输入。
+检索、模型和 MCP HTTP 请求遵循启动进程的 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量。`scripts/build.ps1` 在未设置 `HTTPS_PROXY` 时默认使用 `http://127.0.0.1:7897` 代理；`scripts/build.sh` 不设置代理。SSH 采用本机密钥或 SSH Agent，强制校验已知主机，不支持交互式密码输入。
 
 ## 当前边界与优化方向
 
@@ -118,7 +118,7 @@ node --check frontend/workbench.js && node --check frontend/conversations.js && 
 node scripts/check-i18n.js && node --test scripts/test-conversations.js
 ```
 
-测试覆盖项目隔离、已纳入记录门槛、流程与输入快照、跨项目服务器配额、连接失败不重复提交、有限恢复和人工接手、校验与本地归档、重启持久化、损坏文件保护、检索去重与获取上限、模型证据校验、HTTP 来源检查、Agent 工具范围与调用痕迹、三种模型协议的请求与回填格式，旧工作空间迁移、对话创建项目到产物归档的完整链路，以及执行中断后的操作留存。自动化测试通过可控执行器验证调度闭环；真实服务器和模型端点仍须使用自己的配置完成联调。
+测试覆盖项目隔离、已纳入记录门槛、流程与输入快照、跨项目服务器配额、连接失败不重复提交、有限恢复和人工接手、校验与本地归档、重启持久化、损坏文件保护、检索去重与获取上限、模型证据校验、HTTP 来源检查、Agent 工具范围与调用痕迹、四种模型协议的请求与回填格式，旧工作空间迁移、对话创建项目到产物归档的完整链路，以及执行中断后的操作留存。自动化测试通过可控执行器验证调度闭环；真实服务器和模型端点仍须使用自己的配置完成联调。
 
 ## 引用
 

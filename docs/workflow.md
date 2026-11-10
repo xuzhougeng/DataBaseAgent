@@ -36,7 +36,7 @@ Closing the app does not interrupt remote processes; reopening re-attaches to th
 
 ## Working with agents
 
-Use the dedicated **AI assistant** page for conversations. The Project Assistant has the complete workflow toolset; specialist tabs focus on search, review, pipelines and operations. Review decisions, pipeline changes and job creation can be recorded directly from the conversation; missing facts are requested there. The other pages remain available to inspect or change the results manually. The progress panel shows active tools, recent events and help requests. Add model profiles in **Preferences**. In **Agent center**, right-click a role card to edit its model, instructions and tool step limit in a dialog; a normal click opens **AI assistant** with that role selected. See [agents.md](agents.md) and [models.md](models.md).
+Use the dedicated **AI assistant** page for conversations. The Project Assistant has the complete workflow toolset; specialists, requested with @ mentions in the same conversation, focus on search, review, pipelines and operations. Review decisions, pipeline changes and job creation can be recorded directly from the conversation; missing facts are requested there. The other pages remain available to inspect or change the results manually. The progress panel shows active tools, recent events and help requests. Add model profiles in **Preferences**. In **Agent center**, right-click a role card to edit its model, instructions and tool step limit in a dialog; a normal click opens the same dialog. See [agents.md](agents.md) and [models.md](models.md).
 
 ## Scope and non-goals
 
